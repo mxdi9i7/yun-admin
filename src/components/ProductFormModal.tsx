@@ -28,13 +28,14 @@ export default function ProductFormModal({
 }: ProductFormModalProps) {
   const [name, setName] = useState(initialData?.name || '');
   const [category, setCategory] = useState(initialData?.category || '钥匙');
-  const [stock, setStock] = useState(initialData?.stock || 0);
-  const [price, setPrice] = useState(initialData?.price || 0);
+  const [stock, setStock] = useState<number | null>(initialData?.stock || 0);
+  const [price, setPrice] = useState<number | null>(initialData?.price || 0);
 
   const categories = ['钥匙', '配件', '工具'];
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (stock === null || price === null) return;
     onSubmit({
       name,
       category,

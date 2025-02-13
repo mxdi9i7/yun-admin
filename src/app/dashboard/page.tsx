@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import {
   LineChart,
   Line,
@@ -83,7 +84,7 @@ export default function Dashboard() {
             </div>
           </div>
 
-          <a href='/customers' className='block'>
+          <Link href='/customers' className='block'>
             <div className='bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors'>
               <div className='flex items-center'>
                 <div className='p-2 bg-green-100 dark:bg-green-900 rounded-lg'>
@@ -111,7 +112,7 @@ export default function Dashboard() {
                 </div>
               </div>
             </div>
-          </a>
+          </Link>
 
           <div
             className='bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors'
@@ -360,11 +361,20 @@ export default function Dashboard() {
         isOpen={isInventoryModalOpen}
         onClose={() => setIsInventoryModalOpen(false)}
         products={[]} // Pass your products data here
+        onSubmit={(data) => {
+          console.log('Updating inventory:', data);
+          setIsInventoryModalOpen(false);
+        }}
       />
 
       <ProductFormModal
         isOpen={isProductModalOpen}
         onClose={() => setIsProductModalOpen(false)}
+        onSubmit={(data) => {
+          // Handle product submission
+          console.log('Submitting product:', data);
+          setIsProductModalOpen(false);
+        }}
       />
     </div>
   );

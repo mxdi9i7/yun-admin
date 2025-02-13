@@ -56,9 +56,9 @@ export default function OrderDetailPage() {
   // Mock data for dropdowns
   const customers = ['张三', '李四', '王五', '赵六'];
   const products = [
-    { id: 1, productId: 1, productName: '商品A', price: 299.99 },
-    { id: 2, productId: 2, productName: '商品B', price: 699.0 },
-    { id: 3, productId: 3, productName: '商品C', price: 499.99 },
+    { id: 1, productId: 1, productName: '商品A', price: 299.99, quantity: 1 },
+    { id: 2, productId: 2, productName: '商品B', price: 699.0, quantity: 1 },
+    { id: 3, productId: 3, productName: '商品C', price: 499.99, quantity: 1 },
   ];
 
   const handleEdit = () => {

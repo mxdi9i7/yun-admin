@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import OrderFormModal from '@/components/OrderFormModal';
 import { useRouter } from 'next/navigation';
+import { OrderItem } from '@/types/order';
 
 export default function Orders() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -32,7 +33,12 @@ export default function Orders() {
 
   const handleCreateOrder = (order: {
     customer: string;
-    items: Array<{ name: string; quantity: number }>;
+    items: Array<{
+      productName: string;
+      quantity: number;
+      price: number;
+      productId: number;
+    }>;
   }) => {
     // Handle order creation logic here
     console.log('Creating order:', order);
@@ -77,7 +83,17 @@ export default function Orders() {
         <OrderFormModal
           isOpen={isCreateModalOpen}
           onClose={() => setIsCreateModalOpen(false)}
-          onSubmit={handleCreateOrder}
+          onSubmit={(order: { customer: string; items: OrderItem[] }) => {
+            handleCreateOrder({
+              customer: order.customer,
+              items: order.items.map((item) => ({
+                productName: item.productName || '',
+                quantity: item.quantity,
+                price: item.price,
+                productId: item.productId,
+              })),
+            });
+          }}
         />
 
         {/* Search and Filter Section */}

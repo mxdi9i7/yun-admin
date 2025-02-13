@@ -3,7 +3,10 @@
 import { useState } from 'react';
 import CustomerFormModal from '@/components/CustomerFormModal';
 
-export default function CustomerDetail({ params }: { params: { id: string } }) {
+interface PageProps {
+  params: { id: string };
+}
+export default function CustomerDetail() {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [sortColumn, setSortColumn] = useState('date');
@@ -13,7 +16,7 @@ export default function CustomerDetail({ params }: { params: { id: string } }) {
 
   // Mock data - replace with real API call
   const customer = {
-    id: parseInt(params.id),
+    id: 1,
     name: '张三',
     email: 'zhang@example.com',
     phone: '13800000000',

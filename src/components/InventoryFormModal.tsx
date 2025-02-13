@@ -3,19 +3,27 @@
 import { useState } from 'react';
 import Modal from '@/components/Modal';
 
+interface Product {
+  id: number;
+  name: string;
+  stock: number;
+}
+
 interface InventoryFormModalProps {
   isOpen: boolean;
   onClose: () => void;
-  products: {
-    id: number;
-    name: string;
-    stock: number;
-  }[];
+  onSubmit: (data: {
+    productId: number;
+    type: 'add' | 'remove';
+    quantity: number;
+  }) => void;
+  products: Product[];
 }
 
 export default function InventoryFormModal({
   isOpen,
   onClose,
+  onSubmit,
   products,
 }: InventoryFormModalProps) {
   const [searchTerm, setSearchTerm] = useState('');
@@ -24,7 +32,7 @@ export default function InventoryFormModal({
     name: string;
     stock: number;
   } | null>(null);
-  const [quantity, setQuantity] = useState(0);
+  const [quantity, setQuantity] = useState<number | null>(0);
   const [type, setType] = useState<'add' | 'remove'>('add');
 
   const filteredProducts = products.filter((product) =>
@@ -33,9 +41,8 @@ export default function InventoryFormModal({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedProduct) return;
-    // Here you would typically make an API call to update inventory
-    console.log({
+    if (!selectedProduct || quantity === null) return;
+    onSubmit({
       productId: selectedProduct.id,
       quantity,
       type,

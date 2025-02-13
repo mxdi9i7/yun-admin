@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { OrderItem } from '@/types/order';
 
 interface Product {
   id: number;
@@ -14,17 +15,10 @@ interface Customer {
   name: string;
 }
 
-interface OrderItem {
-  productId: number;
-  quantity: number;
-  productName?: string;
-  price: number;
-}
-
 interface OrderFormModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (order: { customer: string; items: Array<OrderItem> }) => void;
+  onSubmit: (order: { customer: string; items: OrderItem[] }) => void;
 }
 
 export default function OrderFormModal({
@@ -46,7 +40,12 @@ export default function OrderFormModal({
   ]);
 
   const [orderItems, setOrderItems] = useState<OrderItem[]>([
-    { productId: 0, quantity: 1, price: 0 },
+    {
+      productId: 0,
+      productName: '',
+      quantity: 1,
+      price: 0,
+    },
   ]);
 
   // Mock fetch products - replace with real API call
@@ -132,7 +131,15 @@ export default function OrderFormModal({
   };
 
   const handleAddItem = () => {
-    setOrderItems([...orderItems, { productId: 0, quantity: 1, price: 0 }]);
+    setOrderItems([
+      ...orderItems,
+      {
+        productId: 0,
+        productName: '',
+        quantity: 1,
+        price: 0,
+      },
+    ]);
     setProductSearchTerms([...productSearchTerms, '']);
     setShowProductDropdowns([...showProductDropdowns, false]);
     setFilteredProducts([...filteredProducts, []]);
@@ -172,7 +179,14 @@ export default function OrderFormModal({
     });
     setCustomer('');
     setCustomerSearchTerm('');
-    setOrderItems([{ productId: 0, quantity: 1, price: 0 }]);
+    setOrderItems([
+      {
+        productId: 0,
+        productName: '',
+        quantity: 1,
+        price: 0,
+      },
+    ]);
     setProductSearchTerms(['']);
     setShowProductDropdowns([false]);
     onClose();
