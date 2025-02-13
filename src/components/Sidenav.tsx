@@ -2,9 +2,33 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useState, useEffect } from 'react';
 
 export default function Sidenav() {
   const pathname = usePathname();
+  const [isOpen, setIsOpen] = useState(false);
+
+  // Auto-hide on mobile
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth < 768) {
+        setIsOpen(false);
+      } else {
+        setIsOpen(true);
+      }
+    };
+
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // Close sidenav when route changes on mobile
+  useEffect(() => {
+    if (window.innerWidth < 768) {
+      setIsOpen(false);
+    }
+  }, [pathname]);
 
   const navItems = [
     {
@@ -105,35 +129,81 @@ export default function Sidenav() {
   ];
 
   return (
-    <nav className='w-64 bg-white dark:bg-gray-800 h-screen fixed left-0 top-0 shadow-sm'>
-      <div className='px-6 py-8'>
-        <h1 className='text-2xl font-bold text-gray-900 dark:text-white'>
-          云端管理系统
-        </h1>
-        <p className='text-sm text-gray-500 dark:text-gray-400 mt-2'>v1.0.0</p>
-      </div>
+    <>
+      {/* Toggle Button */}
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className='md:hidden fixed top-4 left-4 z-50 p-2 bg-white dark:bg-gray-800 rounded-lg shadow-sm'
+      >
+        <svg
+          className='w-6 h-6'
+          fill='none'
+          stroke='currentColor'
+          viewBox='0 0 24 24'
+        >
+          {isOpen ? (
+            <path
+              strokeLinecap='round'
+              strokeLinejoin='round'
+              strokeWidth={2}
+              d='M6 18L18 6M6 6l12 12'
+            />
+          ) : (
+            <path
+              strokeLinecap='round'
+              strokeLinejoin='round'
+              strokeWidth={2}
+              d='M4 6h16M4 12h16M4 18h16'
+            />
+          )}
+        </svg>
+      </button>
 
-      <ul className='space-y-2 px-4'>
-        {navItems.map((item) => {
-          const isActive = pathname === item.href;
-          return (
-            <li key={item.href}>
-              <Link
-                href={item.href}
-                className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200
-                  ${
-                    isActive
-                      ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'
-                      : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50'
-                  }`}
-              >
-                {item.icon}
-                <span className='font-medium'>{item.name}</span>
-              </Link>
-            </li>
-          );
-        })}
-      </ul>
-    </nav>
+      {/* Backdrop */}
+      {isOpen && (
+        <div
+          className='md:hidden fixed inset-0 bg-black/20 dark:bg-black/40 z-30'
+          onClick={() => setIsOpen(false)}
+        />
+      )}
+
+      {/* Sidenav */}
+      <nav
+        className={`${
+          isOpen ? 'translate-x-0' : '-translate-x-full'
+        } md:translate-x-0 transition-transform duration-200 w-64 bg-white dark:bg-gray-800 h-screen fixed left-0 top-0 shadow-sm z-40`}
+      >
+        <div className='px-6 py-8'>
+          <h1 className='text-2xl font-bold text-gray-900 dark:text-white'>
+            云端管理系统
+          </h1>
+          <p className='text-sm text-gray-500 dark:text-gray-400 mt-2'>
+            v1.0.0
+          </p>
+        </div>
+
+        <ul className='space-y-2 px-4'>
+          {navItems.map((item) => {
+            const isActive = pathname === item.href;
+            return (
+              <li key={item.href}>
+                <Link
+                  href={item.href}
+                  className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200
+                    ${
+                      isActive
+                        ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'
+                        : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50'
+                    }`}
+                >
+                  {item.icon}
+                  <span className='font-medium'>{item.name}</span>
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      </nav>
+    </>
   );
 }
