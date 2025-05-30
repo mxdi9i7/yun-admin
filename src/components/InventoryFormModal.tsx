@@ -1,23 +1,22 @@
 'use client';
 
-import { useState } from 'react';
 import Modal from '@/components/Modal';
-
-interface Product {
-  id: number;
-  name: string;
-  stock: number;
-}
+import LoadingButton from '@/components/LoadingButton';
+import { useState } from 'react';
+import { Product } from '@/lib/supabase-utils';
 
 interface InventoryFormModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSubmit: (data: {
     productId: number;
-    type: 'add' | 'remove';
+    type: 'add';
     quantity: number;
+    notes?: string;
+    price: number;
   }) => void;
-  products: Product[];
+  products: (Product & { stock: number })[];
+  selectedProduct?: Product & { stock: number };
 }
 
 export default function InventoryFormModal({
@@ -25,134 +24,167 @@ export default function InventoryFormModal({
   onClose,
   onSubmit,
   products,
+  selectedProduct,
 }: InventoryFormModalProps) {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedProduct, setSelectedProduct] = useState<{
-    id: number;
-    name: string;
-    stock: number;
-  } | null>(null);
-  const [quantity, setQuantity] = useState<number | null>(0);
-  const [type, setType] = useState<'add' | 'remove'>('add');
+  const [formData, setFormData] = useState({
+    productId: selectedProduct?.id || products[0]?.id || 0,
+    type: 'add' as const,
+    quantity: 1,
+    notes: '',
+    price: 0,
+  });
 
-  const filteredProducts = products.filter((product) =>
-    product.name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedProduct || quantity === null) return;
-    onSubmit({
-      productId: selectedProduct.id,
-      quantity,
-      type,
-    });
-    onClose();
+    setError(null);
+    setIsLoading(true);
+
+    try {
+      if (!formData.price) {
+        throw new Error('入库时必须填写进价');
+      }
+      await onSubmit(formData);
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '保存库存记录时发生错误');
+      console.error('Error saving inventory log:', err);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose}>
-      <form onSubmit={handleSubmit} className='space-y-6 p-2'>
-        <h2 className='text-2xl font-bold text-gray-900 dark:text-white mb-6 border-b pb-4'>
-          调整库存
-        </h2>
-
+    <Modal isOpen={isOpen} onClose={onClose} title='入库'>
+      <form onSubmit={handleSubmit} className='mt-4 space-y-4'>
         <div>
-          <label className='block text-sm font-medium text-gray-700 dark:text-gray-300'>
-            产品名称
-          </label>
-          <input
-            type='text'
-            value={searchTerm}
-            onChange={(e) => {
-              setSearchTerm(e.target.value);
-              setSelectedProduct(null);
-            }}
-            className='mt-1 block w-full px-4 py-2 rounded-md border-2 border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500'
-            placeholder='搜索产品...'
-          />
-          {searchTerm && filteredProducts.length > 0 && !selectedProduct && (
-            <div className='mt-1 border rounded-md shadow-sm max-h-40 overflow-y-auto'>
-              {filteredProducts.map((product) => (
-                <div
-                  key={product.id}
-                  onClick={() => {
-                    setSelectedProduct(product);
-                    setSearchTerm(product.name);
-                  }}
-                  className='px-4 py-2 hover:bg-gray-100 cursor-pointer'
-                >
-                  {product.name}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {selectedProduct && (
-          <div>
-            <label className='block text-sm font-medium text-gray-700 dark:text-gray-300'>
-              当前库存
-            </label>
-            <input
-              type='number'
-              value={selectedProduct.stock}
-              disabled
-              className='mt-1 block w-full px-4 py-2 rounded-md border-2 border-gray-300 bg-gray-50 shadow-sm focus:border-blue-500 focus:ring-blue-500'
-            />
-          </div>
-        )}
-
-        <div>
-          <label className='block text-sm font-medium text-gray-700 dark:text-gray-300'>
-            操作类型
+          <label
+            htmlFor='productId'
+            className='block text-sm font-medium text-gray-700 dark:text-gray-300'
+          >
+            产品
           </label>
           <select
-            value={type}
-            onChange={(e) => setType(e.target.value as 'add' | 'remove')}
-            className='mt-1 block w-full px-4 py-2 rounded-md border-2 border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500'
+            id='productId'
+            value={formData.productId}
+            onChange={(e) =>
+              setFormData({
+                ...formData,
+                productId: parseInt(e.target.value),
+              })
+            }
+            disabled={!!selectedProduct}
+            required
+            className='mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white disabled:opacity-50'
           >
-            <option value='add'>入库</option>
-            <option value='remove'>出库</option>
+            {products.map((product) => (
+              <option key={product.id} value={product.id}>
+                {product.title} (当前库存: {product.stock})
+              </option>
+            ))}
           </select>
         </div>
 
         <div>
-          <label className='block text-sm font-medium text-gray-700 dark:text-gray-300'>
+          <label
+            htmlFor='quantity'
+            className='block text-sm font-medium text-gray-700 dark:text-gray-300'
+          >
             数量
           </label>
           <input
             type='number'
-            min={0}
-            value={quantity || ''}
-            onChange={(e) => setQuantity(Math.max(0, Number(e.target.value)))}
-            onFocus={(e) => {
-              if (quantity === 0) setQuantity(null);
-            }}
-            onBlur={(e) => {
-              if (!quantity) setQuantity(0);
+            id='quantity'
+            value={formData.quantity}
+            onChange={(e) => {
+              const value = parseInt(e.target.value) || 0;
+              if (value > 0) {
+                setFormData({
+                  ...formData,
+                  quantity: value,
+                });
+              }
             }}
             required
-            className='mt-1 block w-full px-4 py-2 rounded-md border-2 border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500'
-            placeholder='0'
+            min='1'
+            className='mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white'
           />
         </div>
 
-        <div className='flex justify-end gap-4'>
-          <button
+        <div>
+          <label
+            htmlFor='price'
+            className='block text-sm font-medium text-gray-700 dark:text-gray-300'
+          >
+            进价
+          </label>
+          <div className='relative mt-1 rounded-md shadow-sm'>
+            <div className='pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3'>
+              <span className='text-gray-500 sm:text-sm'>¥</span>
+            </div>
+            <input
+              type='number'
+              id='price'
+              value={formData.price || ''}
+              onChange={(e) => {
+                const value = parseFloat(e.target.value) || 0;
+                setFormData({
+                  ...formData,
+                  price: value,
+                });
+              }}
+              required
+              min='0'
+              step='0.01'
+              placeholder='0.00'
+              className='block w-full rounded-md border border-gray-300 pl-7 pr-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white'
+            />
+          </div>
+          <p className='mt-1 text-sm text-gray-500 dark:text-gray-400'>
+            入库时必须填写进价
+          </p>
+        </div>
+
+        <div>
+          <label
+            htmlFor='notes'
+            className='block text-sm font-medium text-gray-700 dark:text-gray-300'
+          >
+            备注
+          </label>
+          <textarea
+            id='notes'
+            value={formData.notes}
+            onChange={(e) =>
+              setFormData({ ...formData, notes: e.target.value })
+            }
+            rows={3}
+            className='mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white'
+          />
+        </div>
+
+        {error && (
+          <p className='text-sm text-red-600 dark:text-red-400'>{error}</p>
+        )}
+
+        <div className='mt-6 flex justify-end space-x-3'>
+          <LoadingButton
             type='button'
+            variant='secondary'
             onClick={onClose}
-            className='px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200'
+            disabled={isLoading}
           >
             取消
-          </button>
-          <button
+          </LoadingButton>
+          <LoadingButton
             type='submit'
-            disabled={!selectedProduct}
-            className='px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:bg-blue-300'
+            isLoading={isLoading}
+            loadingText='保存中...'
           >
-            确认
-          </button>
+            保存
+          </LoadingButton>
         </div>
       </form>
     </Modal>

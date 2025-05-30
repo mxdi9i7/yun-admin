@@ -1,173 +1,196 @@
+import { Dialog } from '@headlessui/react';
 import { useState, useEffect } from 'react';
 import Modal from '@/components/Modal';
+import LoadingButton from '@/components/LoadingButton';
+import { Customer, CustomerInsert, customers } from '@/lib/supabase-utils';
 
-interface CreateCustomerModalProps {
+interface CustomerFormModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (customer: { name: string; phone: string }) => void;
-  initialCustomer?: { name: string; phone: string };
+  onSubmit: (customerData: {
+    name: string;
+    phone: string | null;
+    email: string | null;
+    address: string | null;
+    notes: string | null;
+  }) => void;
+  initialData?: {
+    name: string;
+    phone: string | null;
+    email: string | null;
+    address: string | null;
+    notes: string | null;
+  };
   mode?: 'create' | 'edit';
 }
 
-export default function CreateCustomerModal({
+export default function CustomerFormModal({
   isOpen,
   onClose,
   onSubmit,
-  initialCustomer,
+  initialData,
   mode = 'create',
-}: CreateCustomerModalProps) {
-  const [newCustomer, setNewCustomer] = useState({
+}: CustomerFormModalProps) {
+  const [formData, setFormData] = useState({
     name: '',
     phone: '',
+    email: '',
+    address: '',
+    notes: '',
   });
+
   const [errors, setErrors] = useState({
     name: '',
     phone: '',
   });
+  const [isLoading, setIsLoading] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (initialCustomer && mode === 'edit') {
-      setNewCustomer(initialCustomer);
+    if (initialData && mode === 'edit') {
+      setFormData({
+        name: initialData.name,
+        phone: initialData.phone || '',
+        email: initialData.email || '',
+        address: initialData.address || '',
+        notes: initialData.notes || '',
+      });
+    } else {
+      setFormData({ name: '', phone: '', email: '', address: '', notes: '' });
     }
-  }, [initialCustomer, mode]);
+    setErrors({ name: '', phone: '' });
+    setSubmitError(null);
+  }, [initialData, mode, isOpen]);
 
   const validatePhone = (phone: string) => {
+    if (!phone) return true; // Empty phone number is valid
     const phoneRegex = /^1[3-9]\d{9}$/;
     return phoneRegex.test(phone);
   };
 
-  const handleSubmit = () => {
-    const newErrors = {
-      name: !newCustomer.name.trim() ? '请输入客户名称' : '',
-      phone: !validatePhone(newCustomer.phone) ? '请输入有效的手机号码' : '',
-    };
-
-    setErrors(newErrors);
-
-    if (!newErrors.name && !newErrors.phone) {
-      onSubmit(newCustomer);
-      if (mode === 'create') {
-        setNewCustomer({ name: '', phone: '' });
-      }
-      setErrors({ name: '', phone: '' });
-    }
-  };
-
-  const handleClose = () => {
-    if (mode === 'create') {
-      setNewCustomer({ name: '', phone: '' });
-    }
-    setErrors({ name: '', phone: '' });
-    onClose();
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onSubmit({
+      name: formData.name.trim(),
+      phone: formData.phone.trim() || null,
+      email: formData.email.trim() || null,
+      address: formData.address.trim() || null,
+      notes: formData.notes.trim() || null,
+    });
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={handleClose} size='md'>
-      <div className='p-8'>
-        <div className='flex items-center gap-4 mb-8'>
-          <div className='p-3 bg-blue-100 dark:bg-blue-900 rounded-xl'>
-            <svg
-              className='w-6 h-6 text-blue-600 dark:text-blue-400'
-              fill='none'
-              stroke='currentColor'
-              viewBox='0 0 24 24'
-            >
-              <path
-                strokeLinecap='round'
-                strokeLinejoin='round'
-                strokeWidth={2}
-                d={
-                  mode === 'create'
-                    ? 'M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z'
-                    : 'M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z'
-                }
-              />
-            </svg>
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title={mode === 'create' ? '添加新客户' : '编辑客户'}
+    >
+      <form onSubmit={handleSubmit} className='space-y-4'>
+        {submitError && (
+          <div className='p-4 bg-red-50 dark:bg-red-900/50 border-l-4 border-red-500 rounded'>
+            <p className='text-sm text-red-700 dark:text-red-200'>
+              {submitError}
+            </p>
           </div>
-          <h2 className='text-2xl font-bold text-gray-900 dark:text-white'>
-            {mode === 'create' ? '添加新客户' : '编辑客户'}
-          </h2>
+        )}
+
+        <div>
+          <label className='block text-sm font-medium text-gray-700 dark:text-gray-300'>
+            客户名称
+          </label>
+          <input
+            type='text'
+            value={formData.name}
+            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+            className={`mt-1 block w-full rounded-md border ${
+              errors.name ? 'border-red-500' : 'border-gray-300'
+            } px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white`}
+            required
+          />
+          {errors.name && (
+            <p className='mt-1 text-sm text-red-600'>{errors.name}</p>
+          )}
         </div>
 
-        <div className='space-y-6'>
-          <div>
-            <label className='block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2'>
-              客户名称
-            </label>
-            <input
-              type='text'
-              value={newCustomer.name}
-              onChange={(e) =>
-                setNewCustomer({ ...newCustomer, name: e.target.value })
-              }
-              className={`w-full px-4 py-3 border-2 rounded-xl transition-all duration-200
-                ${
-                  errors.name
-                    ? 'border-red-500 focus:ring-red-500 focus:border-red-500'
-                    : 'border-gray-200 dark:border-gray-600 focus:ring-blue-500 focus:border-blue-500'
-                } 
-                dark:bg-gray-700 dark:text-white hover:border-gray-300 dark:hover:border-gray-500`}
-              placeholder='输入客户姓名'
-            />
-            {errors.name && (
-              <p className='mt-2 text-sm text-red-600 dark:text-red-400'>
-                {errors.name}
-              </p>
-            )}
-          </div>
-
-          <div>
-            <label className='block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2'>
-              手机号码
-            </label>
-            <div className='relative'>
-              <span className='absolute inset-y-0 left-0 pl-4 flex items-center text-gray-500 dark:text-gray-400'>
-                +86
-              </span>
-              <input
-                type='tel'
-                value={newCustomer.phone}
-                onChange={(e) =>
-                  setNewCustomer({ ...newCustomer, phone: e.target.value })
-                }
-                className={`w-full pl-12 pr-4 py-3 border-2 rounded-xl transition-all duration-200
-                  ${
-                    errors.phone
-                      ? 'border-red-500 focus:ring-red-500 focus:border-red-500'
-                      : 'border-gray-200 dark:border-gray-600 focus:ring-blue-500 focus:border-blue-500'
-                  }
-                  dark:bg-gray-700 dark:text-white hover:border-gray-300 dark:hover:border-gray-500`}
-                placeholder='输入手机号码'
-              />
-            </div>
-            {errors.phone && (
-              <p className='mt-2 text-sm text-red-600 dark:text-red-400'>
-                {errors.phone}
-              </p>
-            )}
-          </div>
-
-          <div className='flex justify-end gap-4 mt-8'>
-            <button
-              onClick={handleClose}
-              className='px-6 py-3 text-sm font-medium text-gray-700 bg-white border-2 border-gray-200 
-                rounded-xl hover:bg-gray-50 hover:border-gray-300 focus:outline-none focus:ring-2 
-                focus:ring-offset-2 focus:ring-gray-500 transition-all duration-200
-                dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-700'
-            >
-              取消
-            </button>
-            <button
-              onClick={handleSubmit}
-              className='px-6 py-3 text-sm font-medium text-white bg-blue-600 border-2 border-transparent 
-                rounded-xl hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 
-                focus:ring-blue-500 transition-all duration-200 shadow-sm hover:shadow-md'
-            >
-              {mode === 'create' ? '创建客户' : '保存修改'}
-            </button>
-          </div>
+        <div>
+          <label className='block text-sm font-medium text-gray-700 dark:text-gray-300'>
+            手机号码
+          </label>
+          <input
+            type='tel'
+            value={formData.phone}
+            onChange={(e) =>
+              setFormData({ ...formData, phone: e.target.value })
+            }
+            className={`mt-1 block w-full rounded-md border ${
+              errors.phone ? 'border-red-500' : 'border-gray-300'
+            } px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white`}
+          />
+          {errors.phone && (
+            <p className='mt-1 text-sm text-red-600'>{errors.phone}</p>
+          )}
         </div>
-      </div>
+
+        <div>
+          <label className='block text-sm font-medium text-gray-700 dark:text-gray-300'>
+            邮箱
+          </label>
+          <input
+            type='email'
+            value={formData.email}
+            onChange={(e) =>
+              setFormData({ ...formData, email: e.target.value })
+            }
+            className='mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white'
+          />
+        </div>
+
+        <div>
+          <label className='block text-sm font-medium text-gray-700 dark:text-gray-300'>
+            地址
+          </label>
+          <input
+            type='text'
+            value={formData.address}
+            onChange={(e) =>
+              setFormData({ ...formData, address: e.target.value })
+            }
+            className='mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white'
+          />
+        </div>
+
+        <div>
+          <label className='block text-sm font-medium text-gray-700 dark:text-gray-300'>
+            备注
+          </label>
+          <textarea
+            value={formData.notes}
+            onChange={(e) =>
+              setFormData({ ...formData, notes: e.target.value })
+            }
+            rows={3}
+            className='mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white'
+          />
+        </div>
+
+        <div className='flex justify-end space-x-3 mt-6'>
+          <LoadingButton
+            type='button'
+            variant='secondary'
+            onClick={onClose}
+            disabled={isLoading}
+          >
+            取消
+          </LoadingButton>
+          <LoadingButton
+            type='submit'
+            isLoading={isLoading}
+            loadingText={mode === 'create' ? '创建中...' : '保存中...'}
+          >
+            {mode === 'create' ? '创建客户' : '保存修改'}
+          </LoadingButton>
+        </div>
+      </form>
     </Modal>
   );
 }

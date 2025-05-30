@@ -1,62 +1,134 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import Modal from '@/components/Modal';
 import CustomerFormModal from '@/components/CustomerFormModal';
+import { customers } from '@/lib/supabase-utils';
+import type { Database } from '@/types/supabase';
+
+type Customer = Database['public']['Tables']['customers']['Row'];
+
+// Add a utility function for formatting phone numbers
+const formatPhoneNumber = (phone: string | null) => {
+  if (!phone) return '---';
+  // Format as XXX-XXXX-XXXX
+  return phone.replace(/(\d{3})(\d{4})(\d{4})/, '$1-$2-$3');
+};
 
 export default function Customers() {
   const [searchTerm, setSearchTerm] = useState('');
-  const [sortColumn, setSortColumn] = useState('name');
-  const [sortDirection, setSortDirection] = useState('asc');
+  const [sortColumn, setSortColumn] = useState<keyof Customer>('name');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(0);
+  const [totalCustomers, setTotalCustomers] = useState(0);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  const [selectedCustomer, setSelectedCustomer] = useState<{
-    id: number;
-    name: string;
-    phone: string;
-  } | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(
+    null
+  );
+  const [customerList, setCustomerList] = useState<Customer[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
-  // Mock data - replace with real API call
-  const customers = [
-    {
-      id: 1,
-      name: '张三',
-      email: 'zhang@example.com',
-      phone: '13800000000',
-      lastOrder: '2023-12-01',
-    },
-    {
-      id: 2,
-      name: '李四',
-      email: 'li@example.com',
-      phone: '13900000000',
-      lastOrder: '2023-11-28',
-    },
-    // Add more mock data as needed
-  ];
+  const pageSize = 10;
 
-  const handleCreateCustomer = (customer: { name: string; phone: string }) => {
-    // Handle customer creation logic here
-    console.log('Creating customer:', customer);
-    setIsCreateModalOpen(false);
+  const fetchCustomers = async () => {
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const {
+        data,
+        error,
+        count,
+        totalPages: pages,
+      } = await customers.getCustomers({
+        page: currentPage,
+        pageSize,
+        searchTerm,
+        sortColumn,
+        sortDirection,
+      });
+
+      if (error) throw error;
+
+      setCustomerList(data || []);
+      setTotalPages(pages);
+      setTotalCustomers(count || 0);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'An error occurred while fetching customers'
+      );
+      console.error('Error fetching customers:', err);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleEditCustomer = (customer: { name: string; phone: string }) => {
-    // Handle customer edit logic here
-    console.log('Editing customer:', customer);
-    setIsEditModalOpen(false);
-    setSelectedCustomer(null);
-  };
+  useEffect(() => {
+    fetchCustomers();
+  }, [currentPage, searchTerm, sortColumn, sortDirection]);
 
-  const handleEdit = (customer: {
-    id: number;
+  const handleCreateCustomer = async (customerData: {
     name: string;
-    phone: string;
+    phone: string | null;
+    email: string | null;
+    address: string | null;
+    notes: string | null;
   }) => {
-    setSelectedCustomer(customer);
-    setIsEditModalOpen(true);
+    try {
+      await customers.createCustomer(customerData);
+      setIsCreateModalOpen(false);
+      fetchCustomers(); // Refresh the list
+    } catch (err) {
+      console.error('Error creating customer:', err);
+      setError(err instanceof Error ? err.message : '创建客户时发生错误');
+    }
+  };
+
+  const handleEditCustomer = async (customerData: {
+    name: string;
+    phone: string | null;
+    email: string | null;
+    address: string | null;
+    notes: string | null;
+  }) => {
+    if (!selectedCustomer) return;
+    try {
+      await customers.updateCustomer(selectedCustomer.id, customerData);
+      setIsEditModalOpen(false);
+      setSelectedCustomer(null);
+      fetchCustomers(); // Refresh the list
+    } catch (err) {
+      console.error('Error updating customer:', err);
+      setError(err instanceof Error ? err.message : '更新客户时发生错误');
+    }
+  };
+
+  const handleDelete = async (id: number) => {
+    if (!window.confirm('确定要删除这个客户吗？')) return;
+
+    try {
+      await customers.deleteCustomer(id);
+      fetchCustomers(); // Refresh the list
+    } catch (err) {
+      console.error('Error deleting customer:', err);
+      setError(err instanceof Error ? err.message : '删除客户时发生错误');
+    }
+  };
+
+  const handleSort = (column: keyof Customer) => {
+    if (column === sortColumn) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortColumn(column);
+      setSortDirection('asc');
+    }
   };
 
   return (
@@ -110,14 +182,7 @@ export default function Customers() {
           }}
           onSubmit={handleEditCustomer}
           mode='edit'
-          initialCustomer={
-            selectedCustomer
-              ? {
-                  name: selectedCustomer.name,
-                  phone: selectedCustomer.phone,
-                }
-              : undefined
-          }
+          initialCustomer={selectedCustomer}
         />
 
         {/* Search and Filter Section */}
@@ -150,131 +215,197 @@ export default function Customers() {
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
-            <select
-              className='px-6 py-3 border-2 border-gray-200 dark:border-gray-600 rounded-xl
-                        dark:bg-gray-700 dark:text-white shadow-sm 
-                        focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-500
-                        hover:border-gray-300 dark:hover:border-gray-500 transition-all duration-200
-                        cursor-pointer min-w-[160px] appearance-none'
-              style={{
-                backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`,
-                backgroundSize: '1.5em 1.5em',
-                backgroundPosition: 'right 0.75rem center',
-                backgroundRepeat: 'no-repeat',
-              }}
-            >
-              <option value='all'>所有客户</option>
-              <option value='active'>活跃客户</option>
-              <option value='inactive'>不活跃客户</option>
-            </select>
           </div>
         </div>
+
+        {/* Error Message */}
+        {error && (
+          <div className='mb-6 bg-red-50 dark:bg-red-900 border-l-4 border-red-500 p-4 rounded'>
+            <p className='text-red-700 dark:text-red-200'>{error}</p>
+          </div>
+        )}
+
+        {/* Loading State */}
+        {isLoading && (
+          <div className='flex justify-center items-center py-8'>
+            <div className='animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500'></div>
+          </div>
+        )}
 
         {/* Customer Table */}
-        <div className='bg-white dark:bg-gray-800 rounded-lg shadow-sm overflow-hidden'>
-          <table className='min-w-full divide-y divide-gray-200 dark:divide-gray-700'>
-            <thead className='bg-gray-50 dark:bg-gray-900'>
-              <tr>
-                <th className='px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider'>
-                  客户名称
-                </th>
-                <th className='px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider'>
-                  邮箱
-                </th>
-                <th className='px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider'>
-                  电话
-                </th>
-                <th className='px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider'>
-                  最近订单
-                </th>
-                <th className='px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider'>
-                  操作
-                </th>
-              </tr>
-            </thead>
-            <tbody className='bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700'>
-              {customers.map((customer) => (
-                <tr key={customer.id}>
-                  <td className='px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white'>
-                    {customer.name}
-                  </td>
-                  <td className='px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400'>
-                    {customer.email}
-                  </td>
-                  <td className='px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400'>
-                    {customer.phone}
-                  </td>
-                  <td className='px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400'>
-                    {customer.lastOrder}
-                  </td>
-                  <td className='px-6 py-4 whitespace-nowrap text-sm font-medium'>
-                    <button
-                      className='text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 mr-4'
-                      onClick={() => router.push(`/customers/${customer.id}`)}
-                    >
-                      查看详情
-                    </button>
-                    <button
-                      className='text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 mr-4'
-                      onClick={() =>
-                        handleEdit({
-                          id: customer.id,
-                          name: customer.name,
-                          phone: customer.phone,
-                        })
-                      }
-                    >
-                      编辑
-                    </button>
-                    <button className='text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300'>
-                      删除
-                    </button>
-                  </td>
+        {!isLoading && (
+          <div className='bg-white dark:bg-gray-800 rounded-lg shadow-sm overflow-hidden'>
+            <table className='min-w-full divide-y divide-gray-200 dark:divide-gray-700'>
+              <thead className='bg-gray-50 dark:bg-gray-900'>
+                <tr>
+                  <th
+                    className='px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer'
+                    onClick={() => handleSort('name')}
+                  >
+                    客户名称
+                    {sortColumn === 'name' && (
+                      <span className='ml-2'>
+                        {sortDirection === 'asc' ? '↑' : '↓'}
+                      </span>
+                    )}
+                  </th>
+                  <th
+                    className='px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer'
+                    onClick={() => handleSort('email')}
+                  >
+                    邮箱
+                    {sortColumn === 'email' && (
+                      <span className='ml-2'>
+                        {sortDirection === 'asc' ? '↑' : '↓'}
+                      </span>
+                    )}
+                  </th>
+                  <th
+                    className='px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer'
+                    onClick={() => handleSort('phone')}
+                  >
+                    电话
+                    {sortColumn === 'phone' && (
+                      <span className='ml-2'>
+                        {sortDirection === 'asc' ? '↑' : '↓'}
+                      </span>
+                    )}
+                  </th>
+                  <th className='px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider'>
+                    操作
+                  </th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className='bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700'>
+                {customerList.map((customer) => (
+                  <tr key={customer.id}>
+                    <td className='px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white'>
+                      {customer.name}
+                    </td>
+                    <td className='px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400'>
+                      {customer.email || (
+                        <span className='text-gray-300 dark:text-gray-700 text-sm'>
+                          --
+                        </span>
+                      )}
+                    </td>
+                    <td className='px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400'>
+                      {customer.phone ? (
+                        <span className='font-mono'>
+                          {formatPhoneNumber(customer.phone)}
+                        </span>
+                      ) : (
+                        <span className='text-gray-300 dark:text-gray-700 text-sm'>
+                          --
+                        </span>
+                      )}
+                    </td>
+                    <td className='px-6 py-4 whitespace-nowrap text-sm font-medium'>
+                      <button
+                        className='text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 mr-4'
+                        onClick={() => router.push(`/customers/${customer.id}`)}
+                      >
+                        查看详情
+                      </button>
+                      <button
+                        className='text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 mr-4'
+                        onClick={() => {
+                          setSelectedCustomer(customer);
+                          setIsEditModalOpen(true);
+                        }}
+                      >
+                        编辑
+                      </button>
+                      <button
+                        className='text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300'
+                        onClick={() => handleDelete(customer.id)}
+                      >
+                        删除
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
 
         {/* Pagination */}
-        <div className='mt-4 flex items-center justify-between'>
-          <div className='flex-1 flex justify-between sm:hidden'>
-            <button className='px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50'>
-              上一页
-            </button>
-            <button className='ml-3 px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50'>
-              下一页
-            </button>
-          </div>
-          <div className='hidden sm:flex-1 sm:flex sm:items-center sm:justify-between'>
-            <div>
-              <p className='text-sm text-gray-700 dark:text-gray-400'>
-                显示第 <span className='font-medium'>1</span> 到{' '}
-                <span className='font-medium'>10</span> 条， 共{' '}
-                <span className='font-medium'>97</span> 条结果
-              </p>
+        {!isLoading && totalPages > 0 && (
+          <div className='mt-4 flex items-center justify-between'>
+            <div className='flex-1 flex justify-between sm:hidden'>
+              <button
+                onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                disabled={currentPage === 1}
+                className='px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50'
+              >
+                上一页
+              </button>
+              <button
+                onClick={() =>
+                  setCurrentPage((prev) => Math.min(totalPages, prev + 1))
+                }
+                disabled={currentPage === totalPages}
+                className='ml-3 px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50'
+              >
+                下一页
+              </button>
             </div>
-            <div>
-              <nav className='relative z-0 inline-flex rounded-md shadow-sm -space-x-px'>
-                <button className='relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50'>
-                  上一页
-                </button>
-                <button className='relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700'>
-                  1
-                </button>
-                <button className='relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700'>
-                  2
-                </button>
-                <button className='relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700'>
-                  3
-                </button>
-                <button className='relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50'>
-                  下一页
-                </button>
-              </nav>
+            <div className='hidden sm:flex-1 sm:flex sm:items-center sm:justify-between'>
+              <div>
+                <p className='text-sm text-gray-700 dark:text-gray-400'>
+                  显示第{' '}
+                  <span className='font-medium'>
+                    {(currentPage - 1) * pageSize + 1}
+                  </span>{' '}
+                  到{' '}
+                  <span className='font-medium'>
+                    {Math.min(currentPage * pageSize, totalCustomers)}
+                  </span>{' '}
+                  条， 共 <span className='font-medium'>{totalCustomers}</span>{' '}
+                  条结果
+                </p>
+              </div>
+              <div>
+                <nav className='relative z-0 inline-flex rounded-md shadow-sm -space-x-px'>
+                  <button
+                    onClick={() =>
+                      setCurrentPage((prev) => Math.max(1, prev - 1))
+                    }
+                    disabled={currentPage === 1}
+                    className='relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50'
+                  >
+                    上一页
+                  </button>
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map(
+                    (page) => (
+                      <button
+                        key={page}
+                        onClick={() => setCurrentPage(page)}
+                        className={`relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium ${
+                          page === currentPage
+                            ? 'bg-blue-50 text-blue-600 border-blue-500'
+                            : 'text-gray-700 hover:bg-gray-50'
+                        }`}
+                      >
+                        {page}
+                      </button>
+                    )
+                  )}
+                  <button
+                    onClick={() =>
+                      setCurrentPage((prev) => Math.min(totalPages, prev + 1))
+                    }
+                    disabled={currentPage === totalPages}
+                    className='relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50'
+                  >
+                    下一页
+                  </button>
+                </nav>
+              </div>
             </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

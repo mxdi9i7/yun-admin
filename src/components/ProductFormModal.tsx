@@ -1,23 +1,15 @@
 'use client';
 
-import { useState } from 'react';
 import Modal from '@/components/Modal';
+import LoadingButton from '@/components/LoadingButton';
+import { useState, useEffect } from 'react';
+import { Product, ProductInsert } from '@/lib/supabase-utils';
 
 interface ProductFormModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (product: {
-    name: string;
-    category: string;
-    stock: number;
-    price: number;
-  }) => void;
-  initialData?: {
-    name: string;
-    category: string;
-    stock: number;
-    price: number;
-  };
+  onSubmit: (productData: ProductInsert) => void;
+  initialData?: Product;
 }
 
 export default function ProductFormModal({
@@ -26,127 +18,151 @@ export default function ProductFormModal({
   onSubmit,
   initialData,
 }: ProductFormModalProps) {
-  const [name, setName] = useState(initialData?.name || '');
-  const [category, setCategory] = useState(initialData?.category || '钥匙');
-  const [stock, setStock] = useState<number | null>(initialData?.stock || 0);
-  const [price, setPrice] = useState<number | null>(initialData?.price || 0);
+  const [formData, setFormData] = useState<ProductInsert>({
+    title: '',
+    type: 'keys',
+    price: 0,
+  });
 
-  const categories = ['钥匙', '配件', '工具'];
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  // Update form data when initialData changes or modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setFormData({
+        title: initialData?.title || '',
+        type: initialData?.type || 'keys',
+        price: initialData?.price || 0,
+      });
+      setError(null);
+    }
+  }, [initialData, isOpen]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (stock === null || price === null) return;
-    onSubmit({
-      name,
-      category,
-      stock,
-      price,
-    });
-    onClose();
+    setError(null);
+    setIsLoading(true);
+
+    try {
+      // Validate price
+      const priceNum = parseFloat(formData.price.toString());
+      if (isNaN(priceNum) || priceNum < 0) {
+        throw new Error('请输入有效的价格');
+      }
+
+      // Submit with converted price
+      onSubmit({
+        ...formData,
+        price: priceNum,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '表单验证错误');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose}>
-      <form onSubmit={handleSubmit} className='space-y-6 p-2'>
-        <h2 className='text-2xl font-bold text-gray-900 dark:text-white mb-6 border-b pb-4'>
-          {initialData ? '编辑产品' : '添加产品'}
-        </h2>
-
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title={initialData ? '编辑产品' : '新增产品'}
+    >
+      <form onSubmit={handleSubmit} className='mt-4 space-y-4'>
         <div>
-          <label className='block text-sm font-medium text-gray-700 dark:text-gray-300'>
+          <label
+            htmlFor='title'
+            className='block text-sm font-medium text-gray-700 dark:text-gray-300'
+          >
             产品名称
           </label>
           <input
             type='text'
-            value={name}
-            onChange={(e) => setName(e.target.value)}
+            id='title'
+            value={formData.title}
+            onChange={(e) =>
+              setFormData({ ...formData, title: e.target.value })
+            }
             required
-            className='mt-1 block w-full px-4 py-2 rounded-md border-2 border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500'
-            placeholder='输入产品名称'
+            className='mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white'
           />
         </div>
 
         <div>
-          <label className='block text-sm font-medium text-gray-700 dark:text-gray-300'>
-            类别
+          <label
+            htmlFor='type'
+            className='block text-sm font-medium text-gray-700 dark:text-gray-300'
+          >
+            类型
           </label>
           <select
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-            className='mt-1 block w-full px-4 py-2 rounded-md border-2 border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500'
+            id='type'
+            value={formData.type}
+            onChange={(e) =>
+              setFormData({
+                ...formData,
+                type: e.target.value as ProductInsert['type'],
+              })
+            }
+            required
+            className='mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white'
           >
-            {categories.map((cat) => (
-              <option key={cat} value={cat}>
-                {cat}
-              </option>
-            ))}
+            <option value='keys'>钥匙</option>
+            <option value='tools'>工具</option>
+            <option value='parts'>配件</option>
           </select>
         </div>
 
-        <div className='grid grid-cols-2 gap-4'>
-          <div>
-            <label className='block text-sm font-medium text-gray-700 dark:text-gray-300'>
-              库存数量
-            </label>
-            <input
-              type='number'
-              min={0}
-              value={stock || ''}
-              onChange={(e) => setStock(Number(e.target.value))}
-              onFocus={(e) => {
-                if (stock === 0) setStock(null);
-              }}
-              onBlur={(e) => {
-                if (!stock) setStock(0);
-              }}
-              required
-              className='mt-1 block w-full px-4 py-2 rounded-md border-2 border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500'
-              placeholder='0'
-            />
-          </div>
-
-          <div>
-            <label className='block text-sm font-medium text-gray-700 dark:text-gray-300'>
-              价格
-            </label>
-            <div className='relative'>
-              <span className='absolute left-3 top-1/2 -translate-y-1/2 text-gray-500'>
-                ¥
-              </span>
-              <input
-                type='number'
-                min={0}
-                step='0.01'
-                value={price || ''}
-                onChange={(e) => setPrice(Number(e.target.value))}
-                onFocus={(e) => {
-                  if (price === 0) setPrice(null);
-                }}
-                onBlur={(e) => {
-                  if (!price) setPrice(0);
-                }}
-                required
-                className='mt-1 block w-full pl-8 pr-4 py-2 rounded-md border-2 border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500'
-                placeholder='0.00'
-              />
+        <div>
+          <label
+            htmlFor='price'
+            className='block text-sm font-medium text-gray-700 dark:text-gray-300'
+          >
+            价格
+          </label>
+          <div className='relative mt-1 rounded-md shadow-sm'>
+            <div className='pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3'>
+              <span className='text-gray-500 sm:text-sm'>¥</span>
             </div>
+            <input
+              type='text'
+              id='price'
+              value={formData.price}
+              onChange={(e) => {
+                const value = e.target.value;
+                // Allow empty string or numbers with up to 2 decimal places
+                if (value === '' || /^\d*\.?\d{0,2}$/.test(value)) {
+                  setFormData({ ...formData, price: parseFloat(value) || 0 });
+                }
+              }}
+              placeholder='0.00'
+              required
+              className='block w-full rounded-md border border-gray-300 pl-7 pr-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white'
+            />
           </div>
         </div>
 
-        <div className='flex justify-end gap-4'>
-          <button
+        {error && (
+          <p className='text-sm text-red-600 dark:text-red-400'>{error}</p>
+        )}
+
+        <div className='mt-6 flex justify-end space-x-3'>
+          <LoadingButton
             type='button'
+            variant='secondary'
             onClick={onClose}
-            className='px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200'
+            disabled={isLoading}
           >
             取消
-          </button>
-          <button
+          </LoadingButton>
+          <LoadingButton
             type='submit'
-            className='px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700'
+            isLoading={isLoading}
+            loadingText='保存中...'
           >
-            {initialData ? '保存' : '添加'}
-          </button>
+            保存
+          </LoadingButton>
         </div>
       </form>
     </Modal>

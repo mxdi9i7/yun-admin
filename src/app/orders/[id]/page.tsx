@@ -1,405 +1,343 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { orders } from '@/lib/supabase-utils';
+import type { Database } from '@/types/supabase';
+import ConfirmationModal from '@/components/ConfirmationModal';
 
-interface OrderItem {
-  id: number;
-  productId: number;
-  productName: string;
-  quantity: number;
-  price: number;
-}
+type Order = Database['public']['Tables']['orders']['Row'] & {
+  customer: { id: number; name: string };
+  order_items: Array<{
+    id: number;
+    product: number;
+    quantity: number;
+    price_overwrite: number | null;
+    products: { title: string };
+  }>;
+};
 
-interface Order {
-  id: number;
-  customer: string;
-  items: OrderItem[];
-  createdAt: string;
-  total: number;
-}
+type OrderStatus = 'pending' | 'fulfilled' | 'canceled';
 
-export default function OrderDetailPage() {
-  const { id } = useParams();
+const statusLabels: Record<OrderStatus, string> = {
+  pending: '待处理',
+  fulfilled: '已完成',
+  canceled: '已取消',
+};
+
+const statusColors: Record<OrderStatus, string> = {
+  pending:
+    'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
+  fulfilled:
+    'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
+  canceled: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
+};
+
+export default function OrderDetail() {
+  const params = useParams();
   const router = useRouter();
-  const [isEditing, setIsEditing] = useState(false);
-  const [order, setOrder] = useState<Order | null>({
-    id: 1,
-    customer: '张三',
-    items: [
-      {
-        id: 1,
-        productId: 1,
-        productName: '商品A',
-        quantity: 2,
-        price: 299.99,
-      },
-      {
-        id: 2,
-        productId: 2,
-        productName: '商品B',
-        quantity: 1,
-        price: 699.0,
-      },
-    ],
-    createdAt: '2024-01-15T08:30:00Z',
-    total: 1298.98,
-  });
-  const [loading, setLoading] = useState(false);
+  const id = params.id as string;
+
+  const [order, setOrder] = useState<Order | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [customerSearch, setCustomerSearch] = useState('');
-  const [productSearch, setProductSearch] = useState('');
-  const [selectedProduct, setSelectedProduct] = useState<OrderItem | null>(
+  const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
+  const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [selectedStatus, setSelectedStatus] = useState<OrderStatus | null>(
     null
   );
 
-  // Mock data for dropdowns
-  const customers = ['张三', '李四', '王五', '赵六'];
-  const products = [
-    { id: 1, productId: 1, productName: '商品A', price: 299.99, quantity: 1 },
-    { id: 2, productId: 2, productName: '商品B', price: 699.0, quantity: 1 },
-    { id: 3, productId: 3, productName: '商品C', price: 499.99, quantity: 1 },
-  ];
-
-  const handleEdit = () => {
-    setIsEditing(!isEditing);
-  };
-
-  const handleCustomerSelect = (customer: string) => {
-    if (order) {
-      setOrder({ ...order, customer });
-    }
-    setCustomerSearch('');
-  };
-
-  const handleAddProduct = () => {
-    if (selectedProduct && order) {
-      const newItem = { ...selectedProduct, quantity: 1 };
-      const newItems = [...order.items, newItem];
-      const newTotal = newItems.reduce(
-        (sum, item) => sum + item.price * item.quantity,
-        0
-      );
-      setOrder({ ...order, items: newItems, total: newTotal });
-      setSelectedProduct(null);
-      setProductSearch('');
+  const fetchOrder = async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const { data, error } = await orders.getOrderById(parseInt(id));
+      if (error) throw error;
+      setOrder(data);
+    } catch (err) {
+      console.error('Error fetching order:', err);
+      setError(err instanceof Error ? err.message : '获取订单详情失败');
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleUpdateQuantity = (itemId: number, quantity: number) => {
-    if (order) {
-      const newItems = order.items.map((item) =>
-        item.id === itemId ? { ...item, quantity } : item
-      );
-      const newTotal = newItems.reduce(
-        (sum, item) => sum + item.price * item.quantity,
-        0
-      );
-      setOrder({ ...order, items: newItems, total: newTotal });
-    }
-  };
+  useEffect(() => {
+    fetchOrder();
+  }, [id]);
 
-  const handleUpdatePrice = (itemId: number, price: number) => {
-    if (order) {
-      const newItems = order.items.map((item) =>
-        item.id === itemId ? { ...item, price } : item
-      );
-      const newTotal = newItems.reduce(
-        (sum, item) => sum + item.price * item.quantity,
-        0
-      );
-      setOrder({ ...order, items: newItems, total: newTotal });
-    }
-  };
-
-  const handleRemoveItem = (itemId: number) => {
-    if (order) {
-      const newItems = order.items.filter((item) => item.id !== itemId);
-      const newTotal = newItems.reduce(
-        (sum, item) => sum + item.price * item.quantity,
-        0
-      );
-      setOrder({ ...order, items: newItems, total: newTotal });
+  const handleStatusChange = async (status: OrderStatus) => {
+    setIsSubmitting(true);
+    try {
+      await orders.updateOrder(parseInt(id), { status });
+      await fetchOrder();
+      setIsStatusModalOpen(false);
+    } catch (err) {
+      console.error('Error updating order status:', err);
+      setError(err instanceof Error ? err.message : '更新订单状态失败');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   const handleDelete = async () => {
-    if (window.confirm('确定要删除此订单吗？')) {
-      try {
-        setLoading(true);
-        // API call to delete order would go here
-        router.push('/orders');
-      } catch (err) {
-        setError('删除订单失败');
-      } finally {
-        setLoading(false);
-      }
+    setIsSubmitting(true);
+    try {
+      await orders.deleteOrder(parseInt(id));
+      router.push('/orders');
+    } catch (err) {
+      console.error('Error deleting order:', err);
+      setError(err instanceof Error ? err.message : '删除订单失败');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  if (loading) {
+  if (isLoading) {
     return (
-      <div className='min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center'>
-        <div className='text-lg font-medium text-gray-600 dark:text-gray-300'>
-          加载中...
+      <div className='min-h-screen bg-gray-50 dark:bg-gray-900 p-4 sm:p-6 lg:p-8'>
+        <div className='flex justify-center items-center py-8'>
+          <div className='animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500'></div>
         </div>
       </div>
     );
   }
 
-  if (error) {
+  if (error || !order) {
     return (
-      <div className='min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center'>
-        <div className='text-red-500 font-medium'>{error}</div>
-      </div>
-    );
-  }
-
-  if (!order) {
-    return (
-      <div className='min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center'>
-        <div className='text-lg font-medium text-gray-600 dark:text-gray-300'>
-          未找到订单
+      <div className='min-h-screen bg-gray-50 dark:bg-gray-900 p-4 sm:p-6 lg:p-8'>
+        <div className='max-w-7xl mx-auto bg-white dark:bg-gray-800 rounded-lg shadow p-6'>
+          <div className='text-center'>
+            <h2 className='text-xl font-semibold text-gray-900 dark:text-white mb-2'>
+              {error || '订单不存在'}
+            </h2>
+            <button
+              onClick={() => router.push('/orders')}
+              className='text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300'
+            >
+              返回订单列表
+            </button>
+          </div>
         </div>
       </div>
     );
   }
+
+  const orderTotal = order.order_items.reduce(
+    (total, item) => total + (item.price_overwrite || 0) * item.quantity,
+    0
+  );
 
   return (
     <div className='min-h-screen bg-gray-50 dark:bg-gray-900 p-4 sm:p-6 lg:p-8'>
-      <div className='max-w-7xl mx-auto'>
-        <div className='bg-white dark:bg-gray-800 rounded-xl shadow-sm overflow-hidden'>
-          <div className='p-6 sm:p-8 border-b border-gray-200 dark:border-gray-700'>
-            <div className='flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4'>
-              <div>
-                <h1 className='text-2xl font-bold text-gray-900 dark:text-white'>
-                  订单详情
-                </h1>
-                <p className='mt-1 text-sm text-gray-500 dark:text-gray-400'>
-                  订单号: #{order.id}
+      <div className='max-w-7xl mx-auto space-y-6'>
+        {/* Header */}
+        <div className='flex justify-between items-start'>
+          <div>
+            <h1 className='text-2xl font-bold text-gray-900 dark:text-white'>
+              订单详情
+            </h1>
+            <p className='mt-1 text-sm text-gray-600 dark:text-gray-400'>
+              查看和管理订单信息
+            </p>
+          </div>
+          <div className='flex items-center gap-4'>
+            <button
+              onClick={() => router.push('/orders')}
+              className='px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-700'
+            >
+              返回列表
+            </button>
+            <button
+              onClick={() => setIsStatusModalOpen(true)}
+              className='px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50'
+            >
+              修改状态
+            </button>
+            <button
+              onClick={() => setIsConfirmModalOpen(true)}
+              disabled={isSubmitting}
+              className='px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50'
+            >
+              删除订单
+            </button>
+          </div>
+        </div>
+
+        {/* Order Info Card */}
+        <div className='bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6'>
+          <div className='flex items-center justify-between mb-6'>
+            <div className='flex items-center gap-4'>
+              <h2 className='text-xl font-semibold text-gray-900 dark:text-white'>
+                订单 #{order.id}
+              </h2>
+              <span
+                className={`px-3 py-1 text-sm font-semibold rounded-full ${
+                  statusColors[order.status as OrderStatus]
+                }`}
+              >
+                {statusLabels[order.status as OrderStatus]}
+              </span>
+            </div>
+            <div className='text-right'>
+              <p className='text-sm text-gray-600 dark:text-gray-400'>
+                创建时间
+              </p>
+              <p className='text-gray-900 dark:text-white'>
+                {new Date(order.created_at).toLocaleDateString('zh-CN')}
+              </p>
+            </div>
+          </div>
+
+          <div className='grid grid-cols-1 md:grid-cols-2 gap-6'>
+            <div>
+              <h3 className='text-sm font-medium text-gray-500 dark:text-gray-400 mb-2'>
+                客户信息
+              </h3>
+              <div className='bg-gray-50 dark:bg-gray-900 rounded-lg p-4'>
+                <p className='text-gray-900 dark:text-white font-medium'>
+                  {order.customer.name}
+                </p>
+                <button
+                  onClick={() => router.push(`/customers/${order.customer.id}`)}
+                  className='text-sm text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300 hover:underline focus:outline-none mt-1'
+                >
+                  查看客户详情
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <h3 className='text-sm font-medium text-gray-500 dark:text-gray-400 mb-2'>
+                订单总额
+              </h3>
+              <div className='bg-gray-50 dark:bg-gray-900 rounded-lg p-4'>
+                <p className='text-2xl font-semibold text-gray-900 dark:text-white'>
+                  ¥{orderTotal.toFixed(2)}
+                </p>
+                <p className='text-sm text-gray-600 dark:text-gray-400'>
+                  共 {order.order_items.length} 件商品
                 </p>
               </div>
-              <div className='flex items-center gap-4'>
-                <div className='inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'>
-                  待处理
-                </div>
-                <button
-                  onClick={handleEdit}
-                  className={`px-4 py-2 text-sm font-medium text-white ${
-                    isEditing
-                      ? 'bg-green-600 hover:bg-green-700'
-                      : 'bg-blue-600 hover:bg-blue-700'
-                  } rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500`}
-                >
-                  {isEditing ? '保存' : '编辑'}
-                </button>
-                <button
-                  onClick={handleDelete}
-                  className='px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500'
-                >
-                  删除
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div className='p-6 sm:p-8 border-b border-gray-200 dark:border-gray-700'>
-            <h2 className='text-lg font-semibold text-gray-900 dark:text-white'>
-              客户信息
-            </h2>
-            <div className='mt-4 space-y-2'>
-              {isEditing ? (
-                <div className='relative'>
-                  <input
-                    type='text'
-                    value={customerSearch}
-                    onChange={(e) => setCustomerSearch(e.target.value)}
-                    placeholder='搜索客户...'
-                    className='w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600'
-                  />
-                  {customerSearch && (
-                    <div className='absolute z-10 w-full mt-1 bg-white dark:bg-gray-700 border rounded-lg shadow-lg'>
-                      {customers
-                        .filter((c) => c.includes(customerSearch))
-                        .map((customer) => (
-                          <div
-                            key={customer}
-                            onClick={() => handleCustomerSelect(customer)}
-                            className='p-2 hover:bg-gray-100 dark:hover:bg-gray-600 cursor-pointer'
-                          >
-                            {customer}
-                          </div>
-                        ))}
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className='text-gray-700 dark:text-gray-300 font-medium'>
-                  {order.customer}
-                </div>
-              )}
-              <div className='text-sm text-gray-500 dark:text-gray-400 flex items-center gap-2'>
-                <svg
-                  className='w-4 h-4'
-                  fill='none'
-                  stroke='currentColor'
-                  viewBox='0 0 24 24'
-                >
-                  <path
-                    strokeLinecap='round'
-                    strokeLinejoin='round'
-                    strokeWidth={2}
-                    d='M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z'
-                  />
-                </svg>
-                {new Date(order.createdAt).toLocaleString()}
-              </div>
-            </div>
-          </div>
-
-          <div className='p-6 sm:p-8'>
-            <h2 className='text-lg font-semibold text-gray-900 dark:text-white mb-6'>
-              订单商品
-            </h2>
-            {isEditing && (
-              <div className='mb-4 flex gap-2'>
-                <div className='relative flex-1'>
-                  <input
-                    type='text'
-                    value={productSearch}
-                    onChange={(e) => setProductSearch(e.target.value)}
-                    placeholder='添加商品...'
-                    className='w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600'
-                  />
-                  {productSearch && (
-                    <div className='absolute z-10 w-full mt-1 bg-white dark:bg-gray-700 border rounded-lg shadow-lg'>
-                      {products
-                        .filter((p) => p.productName.includes(productSearch))
-                        .map((product) => (
-                          <div
-                            key={product.id}
-                            onClick={() => setSelectedProduct(product)}
-                            className='p-2 hover:bg-gray-100 dark:hover:bg-gray-600 cursor-pointer'
-                          >
-                            {product.productName} - ¥{product.price}
-                          </div>
-                        ))}
-                    </div>
-                  )}
-                </div>
-                <button
-                  onClick={handleAddProduct}
-                  disabled={!selectedProduct}
-                  className='px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50'
-                >
-                  添加
-                </button>
-              </div>
-            )}
-            <div className='overflow-x-auto'>
-              <table className='w-full'>
-                <thead>
-                  <tr className='border-b border-gray-200 dark:border-gray-700'>
-                    <th className='text-left py-3 px-4 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider'>
-                      商品名称
-                    </th>
-                    <th className='text-right py-3 px-4 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider'>
-                      单价
-                    </th>
-                    <th className='text-right py-3 px-4 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider'>
-                      数量
-                    </th>
-                    <th className='text-right py-3 px-4 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider'>
-                      小计
-                    </th>
-                    {isEditing && (
-                      <th className='text-right py-3 px-4 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider'>
-                        操作
-                      </th>
-                    )}
-                  </tr>
-                </thead>
-                <tbody className='divide-y divide-gray-200 dark:divide-gray-700'>
-                  {order.items.map((item) => (
-                    <tr key={item.id}>
-                      <td className='py-4 px-4 text-sm text-gray-900 dark:text-white font-medium'>
-                        {item.productName}
-                      </td>
-                      <td className='py-4 px-4 text-sm text-gray-500 dark:text-gray-400 text-right'>
-                        {isEditing ? (
-                          <div className='relative inline-flex items-center'>
-                            <span className='absolute left-3 text-gray-500 dark:text-gray-400'>
-                              ¥
-                            </span>
-                            <input
-                              type='number'
-                              min='0'
-                              step='0.01'
-                              value={item.price}
-                              onChange={(e) =>
-                                handleUpdatePrice(
-                                  item.id,
-                                  parseFloat(e.target.value) || 0
-                                )
-                              }
-                              className='w-28 py-1.5 pl-7 pr-3 text-right border rounded dark:bg-gray-700 dark:border-gray-600 focus:ring-2 focus:ring-blue-500 focus:border-blue-500'
-                            />
-                          </div>
-                        ) : (
-                          <span>¥{item.price.toFixed(2)}</span>
-                        )}
-                      </td>
-                      <td className='py-4 px-4 text-sm text-gray-500 dark:text-gray-400 text-right'>
-                        {isEditing ? (
-                          <input
-                            type='number'
-                            min='1'
-                            value={item.quantity}
-                            onChange={(e) =>
-                              handleUpdateQuantity(
-                                item.id,
-                                parseInt(e.target.value) || 1
-                              )
-                            }
-                            className='w-20 py-1.5 px-3 text-right border rounded dark:bg-gray-700 dark:border-gray-600 focus:ring-2 focus:ring-blue-500 focus:border-blue-500'
-                          />
-                        ) : (
-                          item.quantity
-                        )}
-                      </td>
-                      <td className='py-4 px-4 text-sm text-gray-900 dark:text-white font-medium text-right'>
-                        ¥{(item.price * item.quantity).toFixed(2)}
-                      </td>
-                      {isEditing && (
-                        <td className='py-4 px-4 text-right'>
-                          <button
-                            onClick={() => handleRemoveItem(item.id)}
-                            className='text-red-600 hover:text-red-700'
-                          >
-                            删除
-                          </button>
-                        </td>
-                      )}
-                    </tr>
-                  ))}
-                </tbody>
-                <tfoot>
-                  <tr>
-                    <td
-                      colSpan={isEditing ? 4 : 3}
-                      className='py-4 px-4 text-right text-sm font-medium text-gray-900 dark:text-white'
-                    >
-                      总计:
-                    </td>
-                    <td className='py-4 px-4 text-right text-base font-semibold text-gray-900 dark:text-white'>
-                      ¥{order.total.toFixed(2)}
-                    </td>
-                  </tr>
-                </tfoot>
-              </table>
             </div>
           </div>
         </div>
+
+        {/* Order Items */}
+        <div className='bg-white dark:bg-gray-800 rounded-lg shadow-sm overflow-hidden'>
+          <div className='p-6 border-b border-gray-200 dark:border-gray-700'>
+            <h2 className='text-lg font-semibold text-gray-900 dark:text-white'>
+              订单商品
+            </h2>
+          </div>
+          <div className='overflow-x-auto'>
+            <table className='min-w-full divide-y divide-gray-200 dark:divide-gray-700'>
+              <thead className='bg-gray-50 dark:bg-gray-900'>
+                <tr>
+                  <th className='px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider'>
+                    商品
+                  </th>
+                  <th className='px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider'>
+                    数量
+                  </th>
+                  <th className='px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider'>
+                    单价
+                  </th>
+                  <th className='px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider'>
+                    小计
+                  </th>
+                </tr>
+              </thead>
+              <tbody className='bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700'>
+                {order.order_items.map((item) => (
+                  <tr key={item.id}>
+                    <td className='px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white'>
+                      {item.products.title}
+                    </td>
+                    <td className='px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white'>
+                      {item.quantity}
+                    </td>
+                    <td className='px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white'>
+                      ¥{item.price_overwrite?.toFixed(2)}
+                    </td>
+                    <td className='px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white'>
+                      ¥
+                      {((item.price_overwrite || 0) * item.quantity).toFixed(2)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot className='bg-gray-50 dark:bg-gray-900'>
+                <tr>
+                  <td
+                    colSpan={3}
+                    className='px-6 py-4 text-right text-sm font-medium text-gray-900 dark:text-white'
+                  >
+                    总计
+                  </td>
+                  <td className='px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white'>
+                    ¥{orderTotal.toFixed(2)}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+
+        {/* Notes */}
+        {order.notes && (
+          <div className='bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6'>
+            <h2 className='text-lg font-semibold text-gray-900 dark:text-white mb-2'>
+              备注
+            </h2>
+            <p className='text-gray-600 dark:text-gray-400'>{order.notes}</p>
+          </div>
+        )}
+
+        {/* Delete Confirmation Modal */}
+        <ConfirmationModal
+          isOpen={isConfirmModalOpen}
+          onClose={() => setIsConfirmModalOpen(false)}
+          onConfirm={handleDelete}
+          title='删除订单'
+          message='确定要删除这个订单吗？此操作无法撤销。'
+          confirmText='删除'
+          cancelText='取消'
+          isLoading={isSubmitting}
+        />
+
+        {/* Status Change Modal */}
+        <ConfirmationModal
+          isOpen={isStatusModalOpen}
+          onClose={() => setIsStatusModalOpen(false)}
+          onConfirm={() => selectedStatus && handleStatusChange(selectedStatus)}
+          title='修改订单状态'
+          message={
+            <div className='space-y-4'>
+              <p>选择新的订单状态：</p>
+              <div className='flex flex-col gap-3'>
+                {Object.entries(statusLabels).map(([status, label]) => (
+                  <button
+                    key={status}
+                    onClick={() => setSelectedStatus(status as OrderStatus)}
+                    className={`px-4 py-2 rounded-lg border ${
+                      selectedStatus === status
+                        ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300'
+                        : 'border-gray-300 hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-700'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          }
+          confirmText='确认'
+          cancelText='取消'
+          confirmDisabled={!selectedStatus}
+          isLoading={isSubmitting}
+        />
       </div>
     </div>
   );
