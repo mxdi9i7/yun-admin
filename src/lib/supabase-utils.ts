@@ -689,7 +689,7 @@ export const orders = {
         product: item.productId,
         quantity: -item.quantity, // Negative for outbound/reduction
         price: item.price,
-        notes: notes || `Order outbound - ${item.quantity} units`,
+        notes: notes || `订单出库 - ${item.quantity} 件`,
       }));
 
       const { data: inventoryData, error: inventoryError } =
