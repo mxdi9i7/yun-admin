@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { orders } from '@/lib/supabase-utils';
 import type { Database } from '@/types/supabase';
 import ConfirmationModal from '@/components/ConfirmationModal';
+import Spinner from '@/components/Spinner';
 
 type Order = Database['public']['Tables']['orders']['Row'] & {
   customer: { id: number; name: string };
@@ -45,7 +46,7 @@ export default function OrderDetail() {
   const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedStatus, setSelectedStatus] = useState<OrderStatus | null>(
-    null
+    null,
   );
 
   const fetchOrder = async () => {
@@ -65,6 +66,7 @@ export default function OrderDetail() {
 
   useEffect(() => {
     fetchOrder();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   const handleStatusChange = async (status: OrderStatus) => {
@@ -98,7 +100,7 @@ export default function OrderDetail() {
     return (
       <div className='min-h-screen bg-gray-50 dark:bg-gray-900 p-4 sm:p-6 lg:p-8'>
         <div className='flex justify-center items-center py-8'>
-          <div className='animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500'></div>
+          <Spinner size='lg' />
         </div>
       </div>
     );
@@ -126,7 +128,7 @@ export default function OrderDetail() {
 
   const orderTotal = order.order_items.reduce(
     (total, item) => total + (item.price_overwrite || 0) * item.quantity,
-    0
+    0,
   );
 
   return (

@@ -65,6 +65,7 @@ export default function Products() {
 
   useEffect(() => {
     fetchProducts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPage, searchTerm, selectedType]);
 
   const handleProductSubmit = async (productData: ProductInsert) => {
@@ -161,8 +162,87 @@ export default function Products() {
           </div>
         )}
 
+        {/* Empty State */}
+        {!isLoading && productList.length === 0 && (
+          <div className='bg-white dark:bg-gray-800 rounded-lg shadow-sm p-12 text-center'>
+            <div className='inline-flex justify-center items-center w-20 h-20 bg-blue-100 dark:bg-blue-900 rounded-full mb-6'>
+              <svg
+                className='w-10 h-10 text-blue-600 dark:text-blue-400'
+                fill='none'
+                stroke='currentColor'
+                viewBox='0 0 24 24'
+              >
+                <path
+                  strokeLinecap='round'
+                  strokeLinejoin='round'
+                  strokeWidth={2}
+                  d='M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4'
+                />
+              </svg>
+            </div>
+            <h3 className='text-xl font-semibold text-gray-900 dark:text-white mb-3'>
+              {searchTerm || selectedType !== 'all'
+                ? '未找到符合条件的产品'
+                : '还没有任何产品'}
+            </h3>
+            <p className='text-gray-600 dark:text-gray-400 mb-8 max-w-md mx-auto'>
+              {searchTerm || selectedType !== 'all'
+                ? '尝试调整搜索条件或筛选条件'
+                : '开始添加您的第一个产品到库存中'}
+            </p>
+            {searchTerm || selectedType !== 'all' ? (
+              <button
+                onClick={() => {
+                  setSearchTerm('');
+                  setSelectedType('all');
+                }}
+                className='inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500'
+              >
+                <svg
+                  className='w-5 h-5 mr-2'
+                  fill='none'
+                  stroke='currentColor'
+                  viewBox='0 0 24 24'
+                >
+                  <path
+                    strokeLinecap='round'
+                    strokeLinejoin='round'
+                    strokeWidth={2}
+                    d='M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15'
+                  />
+                </svg>
+                重置筛选条件
+              </button>
+            ) : (
+              <LoadingButton
+                onClick={() => {
+                  setSelectedProduct(null);
+                  setIsProductModalOpen(true);
+                }}
+                size='lg'
+                className='inline-flex items-center mx-auto'
+              >
+                <svg
+                  className='w-5 h-5 mr-2'
+                  fill='none'
+                  stroke='currentColor'
+                  viewBox='0 0 24 24'
+                >
+                  <path
+                    strokeLinecap='round'
+                    strokeLinejoin='round'
+                    strokeWidth={2}
+                    d='M12 4v16m8-8H4'
+                  />
+                </svg>
+                添加第一个产品
+              </LoadingButton>
+            )}
+          </div>
+        )}
+
         {/* Products Grid */}
-        {!isLoading && (
+        {!isLoading && productList.length > 0 && (
           <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6'>
             {productList.map((product) => (
               <div
@@ -291,7 +371,7 @@ export default function Products() {
                       >
                         {page}
                       </button>
-                    )
+                    ),
                   )}
                   <LoadingButton
                     onClick={() =>

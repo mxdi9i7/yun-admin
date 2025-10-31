@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
 import Sidenav from '@/components/Sidenav';
 import Breadcrumb from '@/components/Breadcrumb';
+import { ToastProvider } from '@/components/ToastProvider';
 import './globals.css';
 
 const geistSans = Geist({
@@ -29,13 +30,15 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-gray-50 dark:bg-gray-900`}
       >
-        <Sidenav />
-        <main className='md:pl-64 transition-[padding] duration-200'>
-          <div className='p-4 sm:p-6 lg:p-8'>
-            <Breadcrumb className='mt-14 md:mt-0' />
-            <div className='mt-6'>{children}</div>
-          </div>
-        </main>
+        <ToastProvider>
+          <Sidenav />
+          <main className='md:pl-64 transition-[padding] duration-200'>
+            <div className='p-4 sm:p-6 lg:p-8'>
+              <Breadcrumb className='mt-14 md:mt-0' />
+              <div className='mt-6'>{children}</div>
+            </div>
+          </main>
+        </ToastProvider>
       </body>
     </html>
   );

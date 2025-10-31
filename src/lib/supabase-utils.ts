@@ -1,11 +1,6 @@
-import { createClient } from '@supabase/supabase-js';
 import type { AuthChangeEvent, Session } from '@supabase/supabase-js';
 import type { Database } from '../types/supabase';
-
-const supabaseClient = createClient<Database>(
-  'https://scdqkzvraociuznmtplo.supabase.co',
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNjZHFrenZyYW9jaXV6bm10cGxvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg1NTUwMzcsImV4cCI6MjA2NDEzMTAzN30.KE-zLj7BebGsxEs6COnJJw9kJSfZAzGBv4HsXayyK4M'
-);
+import { supabase as supabaseClient } from './supabaseClient';
 
 export type Customer = Database['public']['Tables']['customers']['Row'];
 export type CustomerInsert =
@@ -67,7 +62,7 @@ export const auth = {
 
   // Listen to auth state changes
   onAuthStateChange: (
-    callback: (event: AuthChangeEvent, session: Session | null) => void
+    callback: (event: AuthChangeEvent, session: Session | null) => void,
   ) => {
     return supabaseClient.auth.onAuthStateChange(callback);
   },
@@ -122,7 +117,7 @@ export const customers = {
 
       if (searchTerm) {
         query = query.or(
-          `name.ilike.%${searchTerm}%,email.ilike.%${searchTerm}%,phone.ilike.%${searchTerm}%`
+          `name.ilike.%${searchTerm}%,email.ilike.%${searchTerm}%,phone.ilike.%${searchTerm}%`,
         );
       }
 
@@ -189,7 +184,7 @@ export const customers = {
       email: string | null;
       address: string | null;
       notes: string | null;
-    }
+    },
   ) {
     try {
       const { data, error } = await supabaseClient
@@ -268,7 +263,7 @@ export const products = {
         (data || []).map(async (product) => {
           const { stock } = await this.getProductStock(product.id);
           return { ...product, stock };
-        })
+        }),
       );
 
       return {
@@ -525,6 +520,47 @@ export const products = {
       };
     }
   },
+
+  async updateInventoryRecord(
+    id: number,
+    data: {
+      quantity?: number;
+      price?: number;
+      notes?: string;
+    },
+  ) {
+    try {
+      const { data: updated, error } = await supabaseClient
+        .from('inventory')
+        .update(data)
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      return { data: updated, error: null };
+    } catch (error) {
+      console.error('Error updating inventory record:', error);
+      return { data: null, error };
+    }
+  },
+
+  async deleteInventoryRecord(id: number) {
+    try {
+      const { error } = await supabaseClient
+        .from('inventory')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+
+      return { error: null };
+    } catch (error) {
+      console.error('Error deleting inventory record:', error);
+      return { error };
+    }
+  },
 };
 
 export type Order = Database['public']['Tables']['orders']['Row'];
@@ -565,12 +601,12 @@ export const orders = {
             products!inner(title)
           )
         `,
-        { count: 'exact' }
+        { count: 'exact' },
       );
 
       if (searchTerm) {
         query = query.or(
-          `customers.name.ilike.%${searchTerm}%,customers.phone.ilike.%${searchTerm}%`
+          `customers.name.ilike.%${searchTerm}%,customers.phone.ilike.%${searchTerm}%`,
         );
       }
 
@@ -620,7 +656,7 @@ export const orders = {
             price_overwrite,
             products!inner(title)
           )
-        `
+        `,
         )
         .eq('id', id)
         .single();
@@ -647,24 +683,28 @@ export const orders = {
     notes?: string;
   }) {
     try {
-      // First create an inventory record for the order
+      // Create inventory reduction records for each unique product in the order
+      // Group items by product to avoid duplicate inventory entries
+      const inventoryRecords = items.map((item) => ({
+        product: item.productId,
+        quantity: -item.quantity, // Negative for outbound/reduction
+        price: item.price,
+        notes: notes || `Order outbound - ${item.quantity} units`,
+      }));
+
       const { data: inventoryData, error: inventoryError } =
         await supabaseClient
           .from('inventory')
-          .insert([
-            {
-              product: items[0].productId,
-              quantity: -items[0].quantity,
-              price: items[0].price,
-              notes: 'Order outbound inventory',
-            },
-          ])
-          .select()
-          .single();
+          .insert(inventoryRecords)
+          .select();
 
       if (inventoryError) throw inventoryError;
+      if (!inventoryData || inventoryData.length === 0) {
+        throw new Error('Failed to create inventory records');
+      }
 
-      // Create the order with the inventory reference
+      // Create the order with reference to the first inventory record
+      // (orders table has one-to-one relationship with inventory)
       const { data: order, error: orderError } = await supabaseClient
         .from('orders')
         .insert([
@@ -672,7 +712,7 @@ export const orders = {
             customer: customerId,
             status: 'pending',
             notes,
-            inventory: inventoryData.id,
+            inventory: inventoryData[0].id,
           },
         ])
         .select()
@@ -680,9 +720,9 @@ export const orders = {
 
       if (orderError) throw orderError;
 
-      // Insert order items
+      // Insert order items - use quoted "order" column name since it's a reserved keyword
       const orderItems = items.map((item) => ({
-        order: order.id,
+        order: order.id, // Use quoted key for reserved keyword
         product: item.productId,
         quantity: item.quantity,
         price_overwrite: item.price,
@@ -716,7 +756,7 @@ export const orders = {
         quantity: number;
         price: number;
       }>;
-    }
+    },
   ) {
     try {
       // Update order details
@@ -735,17 +775,17 @@ export const orders = {
 
       // Update order items if provided
       if (items) {
-        // Delete existing items
+        // Delete existing items - use quoted column name for reserved keyword
         const { error: deleteError } = await supabaseClient
           .from('order_items')
           .delete()
-          .eq('order', id);
+          .eq('"order"', id); // Use quoted column name
 
         if (deleteError) throw deleteError;
 
-        // Insert new items
+        // Insert new items - use quoted key for reserved keyword
         const orderItems = items.map((item) => ({
-          order: id,
+          order: id, // Use quoted key for reserved keyword
           product: item.productId,
           quantity: item.quantity,
           price_overwrite: item.price,

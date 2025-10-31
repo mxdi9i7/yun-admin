@@ -2,8 +2,11 @@
 
 import { useState, useEffect } from 'react';
 import OrderFormModal from '@/components/OrderFormModal';
+import Spinner from '@/components/Spinner';
+import LoadingButton from '@/components/LoadingButton';
 import { useRouter } from 'next/navigation';
 import { orders } from '@/lib/supabase-utils';
+import { useToast } from '@/components/ToastProvider';
 import type { Database } from '@/types/supabase';
 
 type Order = Database['public']['Tables']['orders']['Row'] & {
@@ -29,7 +32,9 @@ export default function Orders() {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
   const [totalOrders, setTotalOrders] = useState(0);
+  const [updatingStatusId, setUpdatingStatusId] = useState<number | null>(null);
   const router = useRouter();
+  const toast = useToast();
 
   const pageSize = 10;
 
@@ -64,6 +69,7 @@ export default function Orders() {
 
   useEffect(() => {
     fetchOrders();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPage, searchTerm, filterStatus]);
 
   const handleCreateOrder = async (orderData: {
@@ -77,11 +83,53 @@ export default function Orders() {
   }) => {
     try {
       await orders.createOrder(orderData);
+      toast.show({
+        title: '成功',
+        description: '订单已创建',
+        variant: 'success',
+      });
       setIsCreateModalOpen(false);
       fetchOrders();
     } catch (err) {
       console.error('Error creating order:', err);
-      setError(err instanceof Error ? err.message : '创建订单失败');
+      const errorMessage = err instanceof Error ? err.message : '创建订单失败';
+      setError(errorMessage);
+      toast.show({
+        title: '错误',
+        description: errorMessage,
+        variant: 'error',
+      });
+    }
+  };
+
+  const handleStatusChange = async (
+    orderId: number,
+    newStatus: 'pending' | 'fulfilled' | 'canceled',
+  ) => {
+    setUpdatingStatusId(orderId);
+    try {
+      const { error } = await orders.updateOrder(orderId, {
+        status: newStatus,
+      });
+      if (error) throw error;
+
+      toast.show({
+        title: '成功',
+        description: '订单状态已更新',
+        variant: 'success',
+      });
+      await fetchOrders();
+    } catch (err) {
+      console.error('Error updating order status:', err);
+      const errorMessage =
+        err instanceof Error ? err.message : '更新订单状态失败';
+      toast.show({
+        title: '错误',
+        description: errorMessage,
+        variant: 'error',
+      });
+    } finally {
+      setUpdatingStatusId(null);
     }
   };
 
@@ -182,7 +230,7 @@ export default function Orders() {
         {/* Loading State */}
         {isLoading && (
           <div className='flex justify-center items-center py-8'>
-            <div className='animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500'></div>
+            <Spinner size='lg' />
           </div>
         )}
 
@@ -312,27 +360,39 @@ export default function Orders() {
                         .reduce(
                           (total, item) =>
                             total + (item.price_overwrite || 0) * item.quantity,
-                          0
+                          0,
                         )
                         .toFixed(2)}
                     </td>
                     <td className='px-6 py-4 whitespace-nowrap'>
-                      <span
-                        className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full
-                        ${
-                          order.status === 'fulfilled'
-                            ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
-                            : order.status === 'pending'
-                            ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
-                            : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
-                        }`}
-                      >
-                        {order.status === 'fulfilled'
-                          ? '已完成'
-                          : order.status === 'pending'
-                          ? '待处理'
-                          : '已取消'}
-                      </span>
+                      {updatingStatusId === order.id ? (
+                        <Spinner size='sm' />
+                      ) : (
+                        <select
+                          value={order.status || 'pending'}
+                          onChange={(e) =>
+                            handleStatusChange(
+                              order.id,
+                              e.target.value as
+                                | 'pending'
+                                | 'fulfilled'
+                                | 'canceled',
+                            )
+                          }
+                          className={`px-2 py-1 text-xs font-semibold rounded-full border-none focus:ring-2 focus:ring-blue-500 focus:outline-none cursor-pointer
+                          ${
+                            order.status === 'fulfilled'
+                              ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                              : order.status === 'pending'
+                              ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
+                              : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
+                          }`}
+                        >
+                          <option value='pending'>待处理</option>
+                          <option value='fulfilled'>已完成</option>
+                          <option value='canceled'>已取消</option>
+                        </select>
+                      )}
                     </td>
                     <td className='px-6 py-4 whitespace-nowrap text-sm font-medium'>
                       <button
@@ -411,7 +471,7 @@ export default function Orders() {
                       >
                         {page}
                       </button>
-                    )
+                    ),
                   )}
                   <button
                     onClick={() =>

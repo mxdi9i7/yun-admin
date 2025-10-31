@@ -15,6 +15,7 @@ import {
   Legend,
   ResponsiveContainer,
 } from 'recharts';
+import Spinner from '@/components/Spinner';
 import { orders, products, customers } from '@/lib/supabase-utils';
 import type { Database } from '@/types/supabase';
 
@@ -209,6 +210,7 @@ export default function Reports() {
 
   useEffect(() => {
     fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [timeRange]);
 
   if (error) {
@@ -429,7 +431,7 @@ export default function Reports() {
 
         {isLoading && (
           <div className='fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50'>
-            <div className='animate-spin rounded-full h-12 w-12 border-b-2 border-white'></div>
+            <Spinner size='lg' className='text-white' />
           </div>
         )}
       </div>

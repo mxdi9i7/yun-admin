@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -16,37 +16,191 @@ import {
 } from 'recharts';
 import InventoryFormModal from '@/components/InventoryFormModal';
 import ProductFormModal from '@/components/ProductFormModal';
+import Spinner from '@/components/Spinner';
+import {
+  orders as ordersApi,
+  products as productsApi,
+  customers as customersApi,
+  type Product,
+} from '@/lib/supabase-utils';
+import type { Database } from '@/types/supabase';
 
-const monthlyData = [
-  { month: '1月', revenue: 15000, orders: 120 },
-  { month: '2月', revenue: 18000, orders: 145 },
-  { month: '3月', revenue: 16500, orders: 130 },
-  { month: '4月', revenue: 21000, orders: 160 },
-  { month: '5月', revenue: 24500, orders: 180 },
-  { month: '6月', revenue: 24567, orders: 185 },
-];
+type MonthlyPoint = { month: string; revenue: number; orders: number };
+type TopProductPoint = { name: string; sales: number };
 
-const productData = [
-  { name: '主钥匙A', sales: 120 },
-  { name: '主钥匙B', sales: 98 },
-  { name: '主钥匙C', sales: 86 },
-  { name: '主钥匙D', sales: 75 },
-  { name: '主钥匙E', sales: 65 },
-];
+type OrderWithItems = Database['public']['Tables']['orders']['Row'] & {
+  customer: { id: number; name: string };
+  order_items: Array<{
+    id: number;
+    product: number;
+    quantity: number;
+    price_overwrite: number | null;
+    products?: { title: string };
+  }>;
+};
 
 export default function Dashboard() {
   const router = useRouter();
   const [timeRange, setTimeRange] = useState('6m');
   const [isInventoryModalOpen, setIsInventoryModalOpen] = useState(false);
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const [monthlyData, setMonthlyData] = useState<MonthlyPoint[]>([]);
+  const [topProducts, setTopProducts] = useState<TopProductPoint[]>([]);
+  const [recentOrders, setRecentOrders] = useState<OrderWithItems[]>([]);
+  const [lowStock, setLowStock] = useState<
+    Array<{ id: number; title: string; stock: number }>
+  >([]);
+  const [productsList, setProductsList] = useState<
+    Array<{ id: number; title: string; stock: number }>
+  >([]);
+
+  const [metrics, setMetrics] = useState({
+    monthlyRevenue: 0,
+    customersCount: 0,
+    productsCount: 0,
+    pendingOrders: 0,
+  });
+
+  const calcDateRange = (range: string) => {
+    const now = new Date();
+    const months = range === '1m' ? 1 : range === '3m' ? 3 : 6;
+    const start = new Date(now);
+    start.setMonth(now.getMonth() - months + 1);
+    start.setDate(1);
+    const end = now;
+    return { start, end };
+  };
+
+  useEffect(() => {
+    const load = async () => {
+      setIsLoading(true);
+      setError(null);
+      try {
+        const [
+          { data: ordersData },
+          { data: productsData },
+          { data: customersData },
+        ] = await Promise.all([
+          ordersApi.getOrders({ page: 1, pageSize: 1000 }),
+          productsApi.getProducts({
+            page: 1,
+            pageSize: 1000,
+            searchTerm: '',
+            type: 'all',
+          }),
+          customersApi.getCustomers({
+            page: 1,
+            pageSize: 1000,
+            searchTerm: '',
+          }),
+        ]);
+
+        const orders = ordersData || [];
+        const productsWithStock = (productsData || []) as Array<{
+          id: number;
+          title: string;
+          stock: number;
+        }>;
+        setProductsList(productsWithStock);
+
+        const { start, end } = calcDateRange(timeRange);
+        const ranged = orders.filter((o) => {
+          const d = new Date(o.created_at as unknown as string);
+          return d >= start && d <= end;
+        });
+
+        const seriesMap: Record<string, MonthlyPoint> = {};
+        ranged.forEach((o) => {
+          const d = new Date(o.created_at as unknown as string);
+          const key = `${d.getFullYear()}-${d.getMonth() + 1}`;
+          const label = `${d.getMonth() + 1}月`;
+          if (!seriesMap[key])
+            seriesMap[key] = { month: label, revenue: 0, orders: 0 };
+          const orderTotal = (o.order_items || []).reduce(
+            (
+              sum: number,
+              it: {
+                price_overwrite: number | null;
+                quantity: number;
+              },
+            ) => sum + (it.price_overwrite || 0) * it.quantity,
+            0,
+          );
+          seriesMap[key].revenue += orderTotal;
+          seriesMap[key].orders += 1;
+        });
+        const sortedKeys = Object.keys(seriesMap).sort((a, b) => {
+          const [ay, am] = a.split('-').map(Number);
+          const [by, bm] = b.split('-').map(Number);
+          return ay === by ? am - bm : ay - by;
+        });
+        const series = sortedKeys.map((k) => seriesMap[k]);
+        setMonthlyData(series);
+
+        const prodStats: Record<number, { name: string; sales: number }> = {};
+        ranged.forEach((o) => {
+          (o.order_items || []).forEach(
+            (it: {
+              product: number;
+              quantity: number;
+              products?: { title: string };
+            }) => {
+              const name = it.products?.title || `产品#${it.product}`;
+              if (!prodStats[it.product])
+                prodStats[it.product] = { name, sales: 0 };
+              prodStats[it.product].sales += it.quantity;
+            },
+          );
+        });
+        const top = Object.values(prodStats)
+          .sort((a, b) => b.sales - a.sales)
+          .slice(0, 5);
+        setTopProducts(top);
+
+        setRecentOrders(orders.slice(0, 3) as OrderWithItems[]);
+        setLowStock(
+          productsWithStock.filter((p) => p.stock <= 5).slice(0, 5),
+        );
+
+        const lastRevenue = series.length
+          ? series[series.length - 1].revenue
+          : 0;
+        const pending = orders.filter((o) => o.status === 'pending').length;
+        setMetrics({
+          monthlyRevenue: lastRevenue,
+          customersCount: customersData?.length || 0,
+          productsCount: productsWithStock.length,
+          pendingOrders: pending,
+        });
+      } catch (e) {
+        setError(e instanceof Error ? e.message : '加载仪表盘数据失败');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    load();
+  }, [timeRange]);
 
   return (
     <div className='min-h-screen bg-gray-50 dark:bg-gray-900 p-4 sm:p-6 lg:p-8 font-[family-name:var(--font-geist-sans)]'>
       <div className='max-w-7xl mx-auto'>
+        {isLoading && (
+          <div className='flex justify-center items-center py-8'>
+            <Spinner size='lg' />
+          </div>
+        )}
+        {error && (
+          <div className='mb-6 bg-red-50 dark:bg-red-900 border-l-4 border-red-500 p-4 rounded'>
+            <p className='text-red-700 dark:text-red-200'>{error}</p>
+          </div>
+        )}
         {/* Header */}
         <div className='mb-8'>
           <h1 className='text-2xl font-bold text-gray-900 dark:text-white'>
-            云端管理系统
+            云氏钥匙
           </h1>
           <p className='text-gray-600 dark:text-gray-400'>v1.0.0</p>
         </div>
@@ -78,7 +232,10 @@ export default function Dashboard() {
                   月收入
                 </p>
                 <p className='text-2xl font-semibold text-gray-900 dark:text-white'>
-                  ¥24,567
+                  ¥
+                  {metrics.monthlyRevenue.toLocaleString(undefined, {
+                    maximumFractionDigits: 0,
+                  })}
                 </p>
               </div>
             </div>
@@ -107,7 +264,7 @@ export default function Dashboard() {
                     客户总数
                   </p>
                   <p className='text-2xl font-semibold text-gray-900 dark:text-white'>
-                    1,234
+                    {metrics.customersCount.toLocaleString()}
                   </p>
                 </div>
               </div>
@@ -139,7 +296,7 @@ export default function Dashboard() {
                   库存产品
                 </p>
                 <p className='text-2xl font-semibold text-gray-900 dark:text-white'>
-                  567
+                  {metrics.productsCount.toLocaleString()}
                 </p>
               </div>
             </div>
@@ -170,7 +327,7 @@ export default function Dashboard() {
                   待处理订单
                 </p>
                 <p className='text-2xl font-semibold text-gray-900 dark:text-white'>
-                  23
+                  {metrics.pendingOrders.toLocaleString()}
                 </p>
               </div>
             </div>
@@ -229,7 +386,7 @@ export default function Dashboard() {
             </h2>
             <div className='h-80'>
               <ResponsiveContainer width='100%' height='100%'>
-                <BarChart data={productData}>
+                <BarChart data={topProducts}>
                   <CartesianGrid strokeDasharray='3 3' />
                   <XAxis dataKey='name' />
                   <YAxis />
@@ -252,26 +409,35 @@ export default function Dashboard() {
             </div>
             <div className='p-6'>
               <div className='space-y-4'>
-                {[1, 2, 3].map((order) => (
+                {recentOrders.map((o) => (
                   <div
-                    key={order}
+                    key={o.id}
                     className='flex items-center justify-between'
-                    onClick={() => router.push(`/orders/${order}23456`)}
+                    onClick={() => router.push(`/orders/${o.id}`)}
                     style={{ cursor: 'pointer' }}
                   >
                     <div>
                       <p className='font-medium text-gray-900 dark:text-white'>
-                        订单 #{order}23456
+                        订单 #{o.id}
                       </p>
                       <p className='text-sm text-gray-600 dark:text-gray-400'>
-                        客户名称 {order}
+                        {o.customer?.name}
                       </p>
                     </div>
-                    <span className='px-3 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'>
-                      已完成
+                    <span className='px-3 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200'>
+                      {o.status === 'fulfilled'
+                        ? '已完成'
+                        : o.status === 'pending'
+                        ? '待处理'
+                        : '已取消'}
                     </span>
                   </div>
                 ))}
+                {recentOrders.length === 0 && (
+                  <p className='text-sm text-gray-500 dark:text-gray-400'>
+                    暂无订单
+                  </p>
+                )}
               </div>
             </div>
           </div>
@@ -285,14 +451,14 @@ export default function Dashboard() {
             </div>
             <div className='p-6'>
               <div className='space-y-4'>
-                {[1, 2, 3].map((item) => (
-                  <div key={item} className='flex items-center justify-between'>
+                {lowStock.map((p) => (
+                  <div key={p.id} className='flex items-center justify-between'>
                     <div>
                       <p className='font-medium text-gray-900 dark:text-white'>
-                        主钥匙类型 {item}
+                        {p.title}
                       </p>
                       <p className='text-sm text-gray-600 dark:text-gray-400'>
-                        仅剩 {item} 件
+                        仅剩 {p.stock} 件
                       </p>
                     </div>
                     <button
@@ -303,6 +469,11 @@ export default function Dashboard() {
                     </button>
                   </div>
                 ))}
+                {lowStock.length === 0 && (
+                  <p className='text-sm text-gray-500 dark:text-gray-400'>
+                    暂无库存告警
+                  </p>
+                )}
               </div>
             </div>
           </div>
@@ -360,7 +531,7 @@ export default function Dashboard() {
       <InventoryFormModal
         isOpen={isInventoryModalOpen}
         onClose={() => setIsInventoryModalOpen(false)}
-        products={[]} // Pass your products data here
+        products={productsList as unknown as Array<Product & { stock: number }>}
         onSubmit={(data) => {
           console.log('Updating inventory:', data);
           setIsInventoryModalOpen(false);

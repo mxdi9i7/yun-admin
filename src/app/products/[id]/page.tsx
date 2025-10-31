@@ -74,6 +74,7 @@ export default function ProductDetail() {
 
   useEffect(() => {
     fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   const handleInventorySubmit = async (data: {

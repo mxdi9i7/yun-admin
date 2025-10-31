@@ -8,7 +8,7 @@ import { Product, ProductInsert } from '@/lib/supabase-utils';
 interface ProductFormModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (productData: ProductInsert) => void;
+  onSubmit: (productData: ProductInsert) => Promise<void> | void;
   initialData?: Product;
 }
 
@@ -46,13 +46,14 @@ export default function ProductFormModal({
 
     try {
       // Validate price
-      const priceNum = parseFloat(formData.price.toString());
+      const priceValue = formData.price ?? 0;
+      const priceNum = typeof priceValue === 'string' ? parseFloat(priceValue) : priceValue;
       if (isNaN(priceNum) || priceNum < 0) {
         throw new Error('请输入有效的价格');
       }
 
       // Submit with converted price
-      onSubmit({
+      await onSubmit({
         ...formData,
         price: priceNum,
       });
@@ -98,7 +99,7 @@ export default function ProductFormModal({
           </label>
           <select
             id='type'
-            value={formData.type}
+            value={formData.type || 'keys'}
             onChange={(e) =>
               setFormData({
                 ...formData,
@@ -128,7 +129,7 @@ export default function ProductFormModal({
             <input
               type='text'
               id='price'
-              value={formData.price}
+              value={formData.price ?? ''}
               onChange={(e) => {
                 const value = e.target.value;
                 // Allow empty string or numbers with up to 2 decimal places

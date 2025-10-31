@@ -13,7 +13,7 @@ interface CustomerFormModalProps {
     email: string | null;
     address: string | null;
     notes: string | null;
-  }) => void;
+  }) => Promise<void> | void;
   initialData?: {
     name: string;
     phone: string | null;
@@ -68,15 +68,23 @@ export default function CustomerFormModal({
     return phoneRegex.test(phone);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit({
-      name: formData.name.trim(),
-      phone: formData.phone.trim() || null,
-      email: formData.email.trim() || null,
-      address: formData.address.trim() || null,
-      notes: formData.notes.trim() || null,
-    });
+    setIsLoading(true);
+    setSubmitError(null);
+    try {
+      await onSubmit({
+        name: formData.name.trim(),
+        phone: formData.phone.trim() || null,
+        email: formData.email.trim() || null,
+        address: formData.address.trim() || null,
+        notes: formData.notes.trim() || null,
+      });
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : '提交失败');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (

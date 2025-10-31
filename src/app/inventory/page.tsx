@@ -7,6 +7,8 @@ import { Product, products } from '@/lib/supabase-utils';
 import Spinner from '@/components/Spinner';
 import LoadingButton from '@/components/LoadingButton';
 import InventoryFormModal from '@/components/InventoryFormModal';
+import ConfirmationModal from '@/components/ConfirmationModal';
+import { useToast } from '@/components/ToastProvider';
 
 interface InventoryRecord {
   id: number;
@@ -29,10 +31,24 @@ export default function Inventory() {
     (Product & { stock: number })[]
   >([]);
   const [isInventoryModalOpen, setIsInventoryModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [selectedRecord, setSelectedRecord] = useState<InventoryRecord | null>(
+    null,
+  );
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
   const [totalRecords, setTotalRecords] = useState(0);
   const pageSize = 10;
+  const toast = useToast();
+
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}/${month}/${day}`;
+  };
 
   const fetchData = async () => {
     setIsLoading(true);
@@ -83,9 +99,11 @@ export default function Inventory() {
 
   useEffect(() => {
     fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPage]);
 
   const handleInventorySubmit = async (data: {
+    id?: number;
     productId: number;
     type: 'add';
     quantity: number;
@@ -93,15 +111,76 @@ export default function Inventory() {
     price: number;
   }) => {
     try {
-      if (!data.price) {
-        throw new Error('入库时必须填写进价');
+      if (data.id) {
+        // Edit mode
+        const { error } = await products.updateInventoryRecord(data.id, {
+          quantity: data.quantity,
+          price: data.price,
+          notes: data.notes,
+        });
+        if (error) throw error;
+        toast.show({
+          title: '成功',
+          description: '库存记录已更新',
+          variant: 'success',
+        });
+        setIsEditModalOpen(false);
+      } else {
+        // Create mode
+        if (!data.price) {
+          throw new Error('入库时必须填写进价');
+        }
+        await products.updateInventory(data);
+        toast.show({
+          title: '成功',
+          description: '库存记录已创建',
+          variant: 'success',
+        });
+        setIsInventoryModalOpen(false);
       }
-      await products.updateInventory(data);
       await fetchData();
-      setIsInventoryModalOpen(false);
+      setSelectedRecord(null);
     } catch (err) {
-      console.error('Error updating inventory:', err);
-      setError(err instanceof Error ? err.message : '更新库存时发生错误');
+      console.error('Error saving inventory:', err);
+      const errorMessage =
+        err instanceof Error ? err.message : '保存库存记录时发生错误';
+      setError(errorMessage);
+      toast.show({
+        title: '错误',
+        description: errorMessage,
+        variant: 'error',
+      });
+    }
+  };
+
+  const handleEdit = (record: InventoryRecord) => {
+    setSelectedRecord(record);
+    setIsEditModalOpen(true);
+  };
+
+  const handleDelete = async () => {
+    if (!selectedRecord) return;
+    try {
+      const { error } = await products.deleteInventoryRecord(selectedRecord.id);
+      if (error) throw error;
+      toast.show({
+        title: '成功',
+        description: '库存记录已删除',
+        variant: 'success',
+      });
+      await fetchData();
+      setIsDeleteModalOpen(false);
+      setSelectedRecord(null);
+    } catch (err) {
+      console.error('Error deleting inventory record:', err);
+      const errorMessage =
+        err instanceof Error ? err.message : '删除库存记录时发生错误';
+      setError(errorMessage);
+      toast.show({
+        title: '错误',
+        description: errorMessage,
+        variant: 'error',
+      });
     }
   };
 

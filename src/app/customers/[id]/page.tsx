@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import CustomerFormModal from '@/components/CustomerFormModal';
+import Spinner from '@/components/Spinner';
 import { customers, orders } from '@/lib/supabase-utils';
 import type { Database } from '@/types/supabase';
 
@@ -82,6 +83,7 @@ export default function CustomerDetail() {
       setIsLoading(false);
     };
     loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, currentPage, searchTerm, filterStatus]);
 
   const handleEditCustomer = async (customerData: {
@@ -94,7 +96,7 @@ export default function CustomerDetail() {
     try {
       const { error } = await customers.updateCustomer(
         parseInt(id),
-        customerData
+        customerData,
       );
       if (error) throw error;
       await fetchCustomer();
@@ -109,7 +111,7 @@ export default function CustomerDetail() {
     return (
       <div className='min-h-screen bg-gray-50 dark:bg-gray-900 p-4 sm:p-6 lg:p-8'>
         <div className='flex justify-center items-center py-8'>
-          <div className='animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500'></div>
+          <Spinner size='lg' />
         </div>
       </div>
     );
@@ -142,9 +144,9 @@ export default function CustomerDetail() {
       order.order_items.reduce(
         (itemTotal, item) =>
           itemTotal + (item.price_overwrite || 0) * item.quantity,
-        0
+        0,
       ),
-    0
+    0,
   );
 
   return (
@@ -236,7 +238,7 @@ export default function CustomerDetail() {
                   <p className='text-gray-900 dark:text-white'>
                     {customerOrders[0]?.created_at
                       ? new Date(
-                          customerOrders[0].created_at
+                          customerOrders[0].created_at,
                         ).toLocaleDateString('zh-CN')
                       : '-'}
                   </p>
@@ -376,7 +378,7 @@ export default function CustomerDetail() {
                     const orderTotal = order.order_items.reduce(
                       (total, item) =>
                         total + (item.price_overwrite || 0) * item.quantity,
-                      0
+                      0,
                     );
 
                     return (
@@ -386,7 +388,7 @@ export default function CustomerDetail() {
                         </td>
                         <td className='px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400'>
                           {new Date(order.created_at).toLocaleDateString(
-                            'zh-CN'
+                            'zh-CN',
                           )}
                         </td>
                         <td className='px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white'>
@@ -488,7 +490,7 @@ export default function CustomerDetail() {
                         >
                           {page}
                         </button>
-                      )
+                      ),
                     )}
                     <button
                       onClick={() =>
@@ -511,7 +513,17 @@ export default function CustomerDetail() {
           isOpen={isEditModalOpen}
           onClose={() => setIsEditModalOpen(false)}
           onSubmit={handleEditCustomer}
-          initialData={customer}
+          initialData={
+            customer
+              ? {
+                  name: customer.name,
+                  phone: customer.phone,
+                  email: customer.email,
+                  address: customer.address,
+                  notes: customer.notes,
+                }
+              : undefined
+          }
           mode='edit'
         />
       </div>

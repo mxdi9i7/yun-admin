@@ -194,7 +194,7 @@ export default function Sidenav() {
       >
         <div className='px-6 py-8'>
           <h1 className='text-2xl font-bold text-gray-900 dark:text-white'>
-            云端管理系统
+            云氏钥匙
           </h1>
           <p className='text-sm text-gray-500 dark:text-gray-400 mt-2'>
             v1.0.0

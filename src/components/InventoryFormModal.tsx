@@ -2,21 +2,32 @@
 
 import Modal from '@/components/Modal';
 import LoadingButton from '@/components/LoadingButton';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Product } from '@/lib/supabase-utils';
+
+interface InventoryRecord {
+  id: number;
+  product: number;
+  quantity: number;
+  price: number;
+  notes: string | null;
+}
 
 interface InventoryFormModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSubmit: (data: {
+    id?: number;
     productId: number;
     type: 'add';
     quantity: number;
     notes?: string;
     price: number;
-  }) => void;
+  }) => Promise<void> | void;
   products: (Product & { stock: number })[];
   selectedProduct?: Product & { stock: number };
+  initialData?: InventoryRecord;
+  mode?: 'create' | 'edit';
 }
 
 export default function InventoryFormModal({
@@ -25,6 +36,8 @@ export default function InventoryFormModal({
   onSubmit,
   products,
   selectedProduct,
+  initialData,
+  mode = 'create',
 }: InventoryFormModalProps) {
   const [formData, setFormData] = useState({
     productId: selectedProduct?.id || products[0]?.id || 0,
@@ -37,16 +50,42 @@ export default function InventoryFormModal({
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
+  useEffect(() => {
+    if (isOpen) {
+      if (initialData && mode === 'edit') {
+        setFormData({
+          productId: initialData.product,
+          type: 'add',
+          quantity: initialData.quantity,
+          notes: initialData.notes || '',
+          price: initialData.price,
+        });
+      } else {
+        setFormData({
+          productId: selectedProduct?.id || products[0]?.id || 0,
+          type: 'add',
+          quantity: 1,
+          notes: '',
+          price: 0,
+        });
+      }
+      setError(null);
+    }
+  }, [isOpen, initialData, mode, selectedProduct, products]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setIsLoading(true);
 
     try {
-      if (!formData.price) {
+      if (mode === 'create' && !formData.price) {
         throw new Error('入库时必须填写进价');
       }
-      await onSubmit(formData);
+      await onSubmit({
+        ...formData,
+        id: mode === 'edit' && initialData ? initialData.id : undefined,
+      });
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : '保存库存记录时发生错误');
@@ -57,7 +96,11 @@ export default function InventoryFormModal({
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title='入库'>
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title={mode === 'edit' ? '编辑库存记录' : '入库'}
+    >
       <form onSubmit={handleSubmit} className='mt-4 space-y-4'>
         <div>
           <label
@@ -75,7 +118,7 @@ export default function InventoryFormModal({
                 productId: parseInt(e.target.value),
               })
             }
-            disabled={!!selectedProduct}
+            disabled={!!selectedProduct || mode === 'edit'}
             required
             className='mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white disabled:opacity-50'
           >
@@ -100,15 +143,13 @@ export default function InventoryFormModal({
             value={formData.quantity}
             onChange={(e) => {
               const value = parseInt(e.target.value) || 0;
-              if (value > 0) {
-                setFormData({
-                  ...formData,
-                  quantity: value,
-                });
-              }
+              setFormData({
+                ...formData,
+                quantity: value,
+              });
             }}
             required
-            min='1'
+            min={mode === 'edit' ? undefined : '1'}
             className='mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white'
           />
         </div>
@@ -142,9 +183,11 @@ export default function InventoryFormModal({
               className='block w-full rounded-md border border-gray-300 pl-7 pr-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white'
             />
           </div>
-          <p className='mt-1 text-sm text-gray-500 dark:text-gray-400'>
-            入库时必须填写进价
-          </p>
+          {mode === 'create' && (
+            <p className='mt-1 text-sm text-gray-500 dark:text-gray-400'>
+              入库时必须填写进价
+            </p>
+          )}
         </div>
 
         <div>

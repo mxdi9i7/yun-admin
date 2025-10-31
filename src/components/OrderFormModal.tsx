@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import LoadingButton from '@/components/LoadingButton';
 import { customers, products } from '@/lib/supabase-utils';
 import type { Database } from '@/types/supabase';
 
@@ -18,7 +19,7 @@ interface OrderFormModalProps {
       price: number;
     }>;
     notes?: string;
-  }) => void;
+  }) => Promise<void> | void;
 }
 
 export default function OrderFormModal({
@@ -59,6 +60,7 @@ export default function OrderFormModal({
 
   const [notes, setNotes] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
   // Fetch products
   useEffect(() => {
@@ -196,12 +198,14 @@ export default function OrderFormModal({
     );
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setIsLoading(true);
 
     if (!selectedCustomer) {
       setError('请选择客户');
+      setIsLoading(false);
       return;
     }
 
@@ -211,34 +215,39 @@ export default function OrderFormModal({
 
     if (validItems.length === 0) {
       setError('请至少添加一个有效的商品');
+      setIsLoading(false);
       return;
     }
 
-    onSubmit({
-      customerId: selectedCustomer.id,
-      items: validItems.map((item) => ({
-        productId: item.productId,
-        quantity: item.quantity,
-        price: item.price,
-      })),
-      notes: notes || undefined,
-    });
+    try {
+      await onSubmit({
+        customerId: selectedCustomer.id,
+        items: validItems.map((item) => ({
+          productId: item.productId,
+          quantity: item.quantity,
+          price: item.price,
+        })),
+        notes: notes || undefined,
+      });
 
-    setSelectedCustomer(null);
-    setCustomerSearchTerm('');
-    setOrderItems([
-      {
-        productId: 0,
-        productName: '',
-        quantity: 1,
-        price: 0,
-      },
-    ]);
-    setProductSearchTerms(['']);
-    setShowProductDropdowns([false]);
-    setNotes('');
-    setError(null);
-    onClose();
+      setSelectedCustomer(null);
+      setCustomerSearchTerm('');
+      setOrderItems([
+        {
+          productId: 0,
+          productName: '',
+          quantity: 1,
+          price: 0,
+        },
+      ]);
+      setProductSearchTerms(['']);
+      setShowProductDropdowns([false]);
+      setNotes('');
+      setError(null);
+      onClose();
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   if (!isOpen) return null;
@@ -299,41 +308,49 @@ export default function OrderFormModal({
             {orderItems.map((item, index) => (
               <div
                 key={index}
-                className='flex gap-4 items-start p-4 border border-gray-200 dark:border-gray-700 rounded-lg'
+                className='flex gap-4 items-end p-4 border border-gray-200 dark:border-gray-700 rounded-lg'
               >
                 {/* Product Search */}
-                <div className='flex-1 relative'>
-                  <input
-                    type='text'
-                    value={productSearchTerms[index]}
-                    onChange={(e) => handleProductSearch(index, e.target.value)}
-                    placeholder='搜索商品...'
-                    className='w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white'
-                  />
-                  {showProductDropdowns[index] &&
-                    filteredProducts[index].length > 0 && (
-                      <div className='absolute z-10 w-full mt-1 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg shadow-lg max-h-60 overflow-auto'>
-                        {filteredProducts[index].map((product) => (
-                          <button
-                            key={product.id}
-                            type='button'
-                            onClick={() => handleProductSelect(index, product)}
-                            className='w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-900 dark:text-white'
-                          >
-                            {product.title}
-                            {product.price && (
-                              <span className='text-gray-500 dark:text-gray-400 ml-2'>
-                                (¥{product.price.toFixed(2)})
-                              </span>
-                            )}
-                          </button>
-                        ))}
-                      </div>
-                    )}
+                <div className='flex-1'>
+                  <label className='block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1'>
+                    产品
+                  </label>
+                  <div className='relative'>
+                    <input
+                      type='text'
+                      value={productSearchTerms[index]}
+                      onChange={(e) => handleProductSearch(index, e.target.value)}
+                      placeholder='搜索商品...'
+                      className='w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white'
+                    />
+                    {showProductDropdowns[index] &&
+                      filteredProducts[index].length > 0 && (
+                        <div className='absolute z-10 w-full mt-1 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg shadow-lg max-h-60 overflow-auto'>
+                          {filteredProducts[index].map((product) => (
+                            <button
+                              key={product.id}
+                              type='button'
+                              onClick={() => handleProductSelect(index, product)}
+                              className='w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-900 dark:text-white'
+                            >
+                              {product.title}
+                              {product.price && (
+                                <span className='text-gray-500 dark:text-gray-400 ml-2'>
+                                  (¥{product.price.toFixed(2)})
+                                </span>
+                              )}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                  </div>
                 </div>
 
                 {/* Quantity */}
                 <div className='w-24'>
+                  <label className='block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1'>
+                    数量
+                  </label>
                   <input
                     type='number'
                     min='1'
@@ -341,22 +358,30 @@ export default function OrderFormModal({
                     onChange={(e) =>
                       handleQuantityChange(index, parseInt(e.target.value) || 0)
                     }
-                    className='w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white'
+                    className='w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white'
                   />
                 </div>
 
                 {/* Price */}
                 <div className='w-32'>
-                  <input
-                    type='number'
-                    min='0'
-                    step='0.01'
-                    value={item.price}
-                    onChange={(e) =>
-                      handlePriceChange(index, parseFloat(e.target.value) || 0)
-                    }
-                    className='w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white'
-                  />
+                  <label className='block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1'>
+                    单价
+                  </label>
+                  <div className='relative'>
+                    <div className='pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3'>
+                      <span className='text-gray-500 sm:text-sm'>¥</span>
+                    </div>
+                    <input
+                      type='number'
+                      min='0'
+                      step='0.01'
+                      value={item.price}
+                      onChange={(e) =>
+                        handlePriceChange(index, parseFloat(e.target.value) || 0)
+                      }
+                      className='w-full pl-7 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white'
+                    />
+                  </div>
                 </div>
 
                 {/* Remove Button */}
@@ -364,7 +389,7 @@ export default function OrderFormModal({
                   <button
                     type='button'
                     onClick={() => handleRemoveItem(index)}
-                    className='p-2 text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300'
+                    className='p-2 text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 self-end mb-1'
                   >
                     <svg
                       className='w-5 h-5'
@@ -416,19 +441,17 @@ export default function OrderFormModal({
 
           {/* Form Actions */}
           <div className='flex justify-end space-x-3'>
-            <button
+            <LoadingButton
               type='button'
+              variant='secondary'
               onClick={onClose}
-              className='px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500'
+              disabled={isLoading}
             >
               取消
-            </button>
-            <button
-              type='submit'
-              className='px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500'
-            >
+            </LoadingButton>
+            <LoadingButton type='submit' isLoading={isLoading} loadingText='创建中...'>
               创建订单
-            </button>
+            </LoadingButton>
           </div>
         </form>
       </div>

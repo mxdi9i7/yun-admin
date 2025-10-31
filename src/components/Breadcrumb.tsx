@@ -16,6 +16,7 @@ export default function Breadcrumb({ className = '' }: BreadcrumbProps) {
       orders: '订单',
       products: '商品',
       customers: '客户',
+      inventory: '库存管理',
       settings: '设置',
       users: '用户',
       roles: '角色',
@@ -29,6 +30,16 @@ export default function Breadcrumb({ className = '' }: BreadcrumbProps) {
       // In a real app, you would fetch customer data here
       // For now just show "客户详情"
       return '客户详情';
+    }
+
+    // If path is a number and previous path is 'products', show product detail
+    if (!isNaN(Number(path)) && paths[index - 1] === 'products') {
+      return '产品详情';
+    }
+
+    // If path is a number and previous path is 'orders', show order detail
+    if (!isNaN(Number(path)) && paths[index - 1] === 'orders') {
+      return '订单详情';
     }
 
     // If the path is a number (like order ID), return it as is

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Modal from '@/components/Modal';
 import CustomerFormModal from '@/components/CustomerFormModal';
+import Spinner from '@/components/Spinner';
 import { customers } from '@/lib/supabase-utils';
 import type { Database } from '@/types/supabase';
 
@@ -72,6 +73,7 @@ export default function Customers() {
 
   useEffect(() => {
     fetchCustomers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPage, searchTerm, sortColumn, sortDirection]);
 
   const handleCreateCustomer = async (customerData: {
@@ -182,7 +184,17 @@ export default function Customers() {
           }}
           onSubmit={handleEditCustomer}
           mode='edit'
-          initialCustomer={selectedCustomer}
+          initialData={
+            selectedCustomer
+              ? {
+                  name: selectedCustomer.name,
+                  phone: selectedCustomer.phone,
+                  email: selectedCustomer.email,
+                  address: selectedCustomer.address,
+                  notes: selectedCustomer.notes,
+                }
+              : undefined
+          }
         />
 
         {/* Search and Filter Section */}
@@ -228,7 +240,7 @@ export default function Customers() {
         {/* Loading State */}
         {isLoading && (
           <div className='flex justify-center items-center py-8'>
-            <div className='animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500'></div>
+            <Spinner size='lg' />
           </div>
         )}
 
