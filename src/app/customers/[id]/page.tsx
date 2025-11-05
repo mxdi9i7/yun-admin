@@ -89,15 +89,14 @@ export default function CustomerDetail() {
   const handleEditCustomer = async (customerData: {
     name: string;
     phone: string | null;
-    email: string | null;
     address: string | null;
     notes: string | null;
   }) => {
     try {
-      const { error } = await customers.updateCustomer(
-        parseInt(id),
-        customerData,
-      );
+      const { error } = await customers.updateCustomer(parseInt(id), {
+        ...customerData,
+        email: null,
+      });
       if (error) throw error;
       await fetchCustomer();
       setIsEditModalOpen(false);
@@ -197,14 +196,6 @@ export default function CustomerDetail() {
                   </label>
                   <p className='text-gray-900 dark:text-white'>
                     {customer.name}
-                  </p>
-                </div>
-                <div>
-                  <label className='text-sm text-gray-500 dark:text-gray-400'>
-                    邮箱
-                  </label>
-                  <p className='text-gray-900 dark:text-white'>
-                    {customer.email || '-'}
                   </p>
                 </div>
                 <div>
@@ -518,7 +509,6 @@ export default function CustomerDetail() {
               ? {
                   name: customer.name,
                   phone: customer.phone,
-                  email: customer.email,
                   address: customer.address,
                   notes: customer.notes,
                 }

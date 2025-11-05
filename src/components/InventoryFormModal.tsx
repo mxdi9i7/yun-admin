@@ -42,7 +42,7 @@ export default function InventoryFormModal({
   const [formData, setFormData] = useState({
     productId: selectedProduct?.id || products[0]?.id || 0,
     type: 'add' as const,
-    quantity: 1,
+    quantityStr: '1',
     notes: '',
     price: 0,
   });
@@ -56,7 +56,7 @@ export default function InventoryFormModal({
         setFormData({
           productId: initialData.product,
           type: 'add',
-          quantity: initialData.quantity,
+          quantityStr: initialData.quantity.toString(),
           notes: initialData.notes || '',
           price: initialData.price,
         });
@@ -64,7 +64,7 @@ export default function InventoryFormModal({
         setFormData({
           productId: selectedProduct?.id || products[0]?.id || 0,
           type: 'add',
-          quantity: 1,
+          quantityStr: '1',
           notes: '',
           price: 0,
         });
@@ -79,11 +79,25 @@ export default function InventoryFormModal({
     setIsLoading(true);
 
     try {
+      // Validate and parse quantity
+      const quantity = parseInt(formData.quantityStr);
+      if (isNaN(quantity) || formData.quantityStr.trim() === '') {
+        throw new Error('请输入有效的数量');
+      }
+      if (mode === 'create' && quantity < 1) {
+        throw new Error('入库数量必须大于 0');
+      }
+
       if (mode === 'create' && !formData.price) {
         throw new Error('入库时必须填写进价');
       }
+
       await onSubmit({
-        ...formData,
+        productId: formData.productId,
+        type: formData.type,
+        quantity,
+        notes: formData.notes,
+        price: formData.price,
         id: mode === 'edit' && initialData ? initialData.id : undefined,
       });
       onClose();
@@ -138,20 +152,28 @@ export default function InventoryFormModal({
             数量
           </label>
           <input
-            type='number'
+            type='text'
             id='quantity'
-            value={formData.quantity}
+            value={formData.quantityStr}
             onChange={(e) => {
-              const value = parseInt(e.target.value) || 0;
-              setFormData({
-                ...formData,
-                quantity: value,
-              });
+              const value = e.target.value;
+              // Allow empty string, negative sign, and numbers
+              if (value === '' || value === '-' || /^-?\d+$/.test(value)) {
+                setFormData({
+                  ...formData,
+                  quantityStr: value,
+                });
+              }
             }}
             required
-            min={mode === 'edit' ? undefined : '1'}
+            placeholder={mode === 'edit' ? '输入数量' : '输入数量（正数）'}
             className='mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white'
           />
+          {mode === 'edit' && (
+            <p className='mt-1 text-sm text-gray-500 dark:text-gray-400'>
+              可输入正数或负数
+            </p>
+          )}
         </div>
 
         <div>

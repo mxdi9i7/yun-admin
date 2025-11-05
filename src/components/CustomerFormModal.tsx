@@ -10,14 +10,12 @@ interface CustomerFormModalProps {
   onSubmit: (customerData: {
     name: string;
     phone: string | null;
-    email: string | null;
     address: string | null;
     notes: string | null;
   }) => Promise<void> | void;
   initialData?: {
     name: string;
     phone: string | null;
-    email: string | null;
     address: string | null;
     notes: string | null;
   };
@@ -34,7 +32,6 @@ export default function CustomerFormModal({
   const [formData, setFormData] = useState({
     name: '',
     phone: '',
-    email: '',
     address: '',
     notes: '',
   });
@@ -51,12 +48,11 @@ export default function CustomerFormModal({
       setFormData({
         name: initialData.name,
         phone: initialData.phone || '',
-        email: initialData.email || '',
         address: initialData.address || '',
         notes: initialData.notes || '',
       });
     } else {
-      setFormData({ name: '', phone: '', email: '', address: '', notes: '' });
+      setFormData({ name: '', phone: '', address: '', notes: '' });
     }
     setErrors({ name: '', phone: '' });
     setSubmitError(null);
@@ -76,7 +72,6 @@ export default function CustomerFormModal({
       await onSubmit({
         name: formData.name.trim(),
         phone: formData.phone.trim() || null,
-        email: formData.email.trim() || null,
         address: formData.address.trim() || null,
         notes: formData.notes.trim() || null,
       });
@@ -137,20 +132,6 @@ export default function CustomerFormModal({
           {errors.phone && (
             <p className='mt-1 text-sm text-red-600'>{errors.phone}</p>
           )}
-        </div>
-
-        <div>
-          <label className='block text-sm font-medium text-gray-700 dark:text-gray-300'>
-            邮箱
-          </label>
-          <input
-            type='email'
-            value={formData.email}
-            onChange={(e) =>
-              setFormData({ ...formData, email: e.target.value })
-            }
-            className='mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white'
-          />
         </div>
 
         <div>

@@ -200,13 +200,94 @@ export const customers = {
     }
   },
 
-  async deleteCustomer(id: number) {
-    const { error } = await supabaseClient
-      .from('customers')
-      .delete()
-      .eq('id', id);
+  async getOrCreateDeletedCustomerPlaceholder() {
+    try {
+      // Try to find existing "deleted customer" placeholder
+      const { data: existingPlaceholder, error: searchError } =
+        await supabaseClient
+          .from('customers')
+          .select('*')
+          .eq('name', '[已删除的客户]')
+          .maybeSingle();
 
-    if (error) throw error;
+      if (searchError) throw searchError;
+
+      if (existingPlaceholder) {
+        return { data: existingPlaceholder, error: null };
+      }
+
+      // Create placeholder if it doesn't exist
+      const { data: newPlaceholder, error: createError } = await supabaseClient
+        .from('customers')
+        .insert([
+          {
+            name: '[已删除的客户]',
+            phone: null,
+            email: null,
+            address: null,
+            notes: '这是一个占位客户，用于保留已删除客户的订单记录',
+          },
+        ])
+        .select()
+        .single();
+
+      if (createError) throw createError;
+      return { data: newPlaceholder, error: null };
+    } catch (error) {
+      console.error(
+        'Error getting/creating deleted customer placeholder:',
+        error,
+      );
+      return { data: null, error };
+    }
+  },
+
+  async getCustomerOrderCount(id: number) {
+    try {
+      const { count, error } = await supabaseClient
+        .from('orders')
+        .select('*', { count: 'exact', head: true })
+        .eq('customer', id);
+
+      if (error) throw error;
+      return { count: count || 0, error: null };
+    } catch (error) {
+      console.error('Error getting customer order count:', error);
+      return { count: 0, error };
+    }
+  },
+
+  async deleteCustomer(id: number) {
+    try {
+      // Get or create the deleted customer placeholder
+      const { data: placeholder, error: placeholderError } =
+        await this.getOrCreateDeletedCustomerPlaceholder();
+
+      if (placeholderError || !placeholder) {
+        throw new Error('无法创建占位客户');
+      }
+
+      // Update all orders belonging to this customer to reference the placeholder
+      const { error: updateError } = await supabaseClient
+        .from('orders')
+        .update({ customer: placeholder.id })
+        .eq('customer', id);
+
+      if (updateError) throw updateError;
+
+      // Now delete the customer
+      const { error: deleteError } = await supabaseClient
+        .from('customers')
+        .delete()
+        .eq('id', id);
+
+      if (deleteError) throw deleteError;
+
+      return { error: null };
+    } catch (error) {
+      console.error('Error deleting customer:', error);
+      return { error };
+    }
   },
 };
 
@@ -336,14 +417,61 @@ export const products = {
     }
   },
 
+  async getProductOrderCount(id: number) {
+    try {
+      const { count, error } = await supabaseClient
+        .from('order_items')
+        .select('*', { count: 'exact', head: true })
+        .eq('product', id);
+
+      if (error) throw error;
+      return { count: count || 0, error: null };
+    } catch (error) {
+      console.error('Error getting product order count:', error);
+      return { count: 0, error };
+    }
+  },
+
+  async getProductInventoryCount(id: number) {
+    try {
+      const { count, error } = await supabaseClient
+        .from('inventory')
+        .select('*', { count: 'exact', head: true })
+        .eq('product', id);
+
+      if (error) throw error;
+      return { count: count || 0, error: null };
+    } catch (error) {
+      console.error('Error getting product inventory count:', error);
+      return { count: 0, error };
+    }
+  },
+
   async deleteProduct(id: number) {
     try {
-      const { error } = await supabaseClient
+      // First, delete all order_items that reference this product
+      const { error: deleteItemsError } = await supabaseClient
+        .from('order_items')
+        .delete()
+        .eq('product', id);
+
+      if (deleteItemsError) throw deleteItemsError;
+
+      // Delete all inventory records for this product
+      const { error: deleteInventoryError } = await supabaseClient
+        .from('inventory')
+        .delete()
+        .eq('product', id);
+
+      if (deleteInventoryError) throw deleteInventoryError;
+
+      // Then delete the product itself
+      const { error: deleteProductError } = await supabaseClient
         .from('products')
         .delete()
         .eq('id', id);
 
-      if (error) throw error;
+      if (deleteProductError) throw deleteProductError;
       return { error: null };
     } catch (error) {
       console.error('Error deleting product:', error);

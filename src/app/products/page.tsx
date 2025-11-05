@@ -25,6 +25,9 @@ export default function Products() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [productList, setProductList] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteOrderCount, setDeleteOrderCount] = useState(0);
+  const [deleteInventoryCount, setDeleteInventoryCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
@@ -84,17 +87,57 @@ export default function Products() {
     }
   };
 
+  const handleDeleteClick = async (product: Product) => {
+    try {
+      // Get the order count and inventory count for this product
+      const [
+        { count: orderCount, error: orderCountError },
+        { count: inventoryCount, error: inventoryCountError },
+      ] = await Promise.all([
+        products.getProductOrderCount(product.id),
+        products.getProductInventoryCount(product.id),
+      ]);
+
+      if (orderCountError || inventoryCountError) {
+        console.error(
+          'Error getting counts:',
+          orderCountError || inventoryCountError,
+        );
+        setError('获取相关记录数量时发生错误');
+        return;
+      }
+
+      setSelectedProduct(product);
+      setDeleteOrderCount(orderCount);
+      setDeleteInventoryCount(inventoryCount);
+      setIsDeleteModalOpen(true);
+    } catch (err) {
+      console.error('Error preparing delete:', err);
+      setError(err instanceof Error ? err.message : '准备删除时发生错误');
+    }
+  };
+
   const handleDeleteConfirm = async () => {
     if (!selectedProduct) return;
 
+    setIsDeleting(true);
     try {
-      await products.deleteProduct(selectedProduct.id);
+      const { error: deleteError } = await products.deleteProduct(
+        selectedProduct.id,
+      );
+
+      if (deleteError) throw deleteError;
+
       await fetchProducts();
       setIsDeleteModalOpen(false);
       setSelectedProduct(null);
+      setDeleteOrderCount(0);
+      setDeleteInventoryCount(0);
     } catch (err) {
       console.error('Error deleting product:', err);
       setError(err instanceof Error ? err.message : '删除产品时发生错误');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -292,10 +335,7 @@ export default function Products() {
                       编辑
                     </LoadingButton>
                     <LoadingButton
-                      onClick={() => {
-                        setSelectedProduct(product);
-                        setIsDeleteModalOpen(true);
-                      }}
+                      onClick={() => handleDeleteClick(product)}
                       variant='danger'
                       size='sm'
                     >
@@ -406,12 +446,65 @@ export default function Products() {
           onClose={() => {
             setIsDeleteModalOpen(false);
             setSelectedProduct(null);
+            setDeleteOrderCount(0);
+            setDeleteInventoryCount(0);
           }}
           onConfirm={handleDeleteConfirm}
           title='删除产品'
-          message={`确定要删除产品 "${selectedProduct?.title}" 吗？此操作无法撤销。`}
+          message={
+            <div>
+              <p className='mb-3'>
+                确定要删除产品{' '}
+                <span className='font-semibold'>{selectedProduct?.title}</span>{' '}
+                吗？
+              </p>
+              {deleteOrderCount > 0 || deleteInventoryCount > 0 ? (
+                <div className='mt-3 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg'>
+                  <div className='flex items-start'>
+                    <svg
+                      className='w-5 h-5 text-yellow-600 dark:text-yellow-500 mt-0.5 mr-2 flex-shrink-0'
+                      fill='none'
+                      stroke='currentColor'
+                      viewBox='0 0 24 24'
+                    >
+                      <path
+                        strokeLinecap='round'
+                        strokeLinejoin='round'
+                        strokeWidth={2}
+                        d='M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z'
+                      />
+                    </svg>
+                    <div>
+                      <p className='text-sm font-medium text-yellow-800 dark:text-yellow-200'>
+                        该产品有相关记录将被删除：
+                      </p>
+                      <ul className='text-sm text-yellow-700 dark:text-yellow-300 mt-2 space-y-1 list-disc list-inside'>
+                        {deleteOrderCount > 0 && (
+                          <li>{deleteOrderCount} 个订单项</li>
+                        )}
+                        {deleteInventoryCount > 0 && (
+                          <li>{deleteInventoryCount} 条库存记录</li>
+                        )}
+                      </ul>
+                      <p className='text-sm text-yellow-700 dark:text-yellow-300 mt-2'>
+                        删除后，所有相关记录将被永久移除。这可能会影响历史数据的完整性。
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <p className='text-sm text-gray-600 dark:text-gray-400 mt-2'>
+                  该产品未在任何订单或库存记录中使用。
+                </p>
+              )}
+              <p className='mt-4 text-sm font-medium text-red-600 dark:text-red-400'>
+                此操作无法撤销！
+              </p>
+            </div>
+          }
           confirmText='删除'
           cancelText='取消'
+          isLoading={isDeleting}
         />
       </div>
     </div>

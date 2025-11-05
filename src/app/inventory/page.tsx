@@ -25,7 +25,7 @@ export default function Inventory() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [inventoryRecords, setInventoryRecords] = useState<InventoryRecord[]>(
-    []
+    [],
   );
   const [productsList, setProductsList] = useState<
     (Product & { stock: number })[]
@@ -277,13 +277,30 @@ export default function Inventory() {
                     <td className='px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400'>
                       {record.notes || '-'}
                     </td>
-                    <td className='px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white'>
-                      <Link
-                        href={`/products/${record.product}`}
-                        className='text-blue-600 dark:text-blue-400 hover:underline'
-                      >
-                        查看产品
-                      </Link>
+                    <td className='px-6 py-4 whitespace-nowrap text-sm'>
+                      <div className='flex items-center space-x-3'>
+                        <button
+                          onClick={() => handleEdit(record)}
+                          className='text-blue-600 dark:text-blue-400 hover:underline'
+                        >
+                          编辑
+                        </button>
+                        <button
+                          onClick={() => {
+                            setSelectedRecord(record);
+                            setIsDeleteModalOpen(true);
+                          }}
+                          className='text-red-600 dark:text-red-400 hover:underline'
+                        >
+                          删除
+                        </button>
+                        <Link
+                          href={`/products/${record.product}`}
+                          className='text-gray-600 dark:text-gray-400 hover:underline'
+                        >
+                          查看产品
+                        </Link>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -350,6 +367,59 @@ export default function Inventory() {
           onClose={() => setIsInventoryModalOpen(false)}
           onSubmit={handleInventorySubmit}
           products={productsList}
+        />
+
+        {/* Edit Inventory Modal */}
+        {selectedRecord && (
+          <InventoryFormModal
+            isOpen={isEditModalOpen}
+            onClose={() => {
+              setIsEditModalOpen(false);
+              setSelectedRecord(null);
+            }}
+            onSubmit={handleInventorySubmit}
+            products={productsList}
+            initialData={selectedRecord}
+            mode='edit'
+          />
+        )}
+
+        {/* Delete Confirmation Modal */}
+        <ConfirmationModal
+          isOpen={isDeleteModalOpen}
+          onClose={() => {
+            setIsDeleteModalOpen(false);
+            setSelectedRecord(null);
+          }}
+          onConfirm={handleDelete}
+          title='删除库存记录'
+          message={
+            <div>
+              <p>确定要删除这条库存记录吗？</p>
+              {selectedRecord && (
+                <div className='mt-3 p-3 bg-gray-100 dark:bg-gray-700 rounded'>
+                  <p className='text-sm'>
+                    <span className='font-medium'>产品：</span>
+                    {selectedRecord.product_details?.title || '未知产品'}
+                  </p>
+                  <p className='text-sm'>
+                    <span className='font-medium'>数量：</span>
+                    {selectedRecord.quantity > 0 ? '+' : ''}
+                    {selectedRecord.quantity}
+                  </p>
+                  <p className='text-sm'>
+                    <span className='font-medium'>单价：</span>¥
+                    {selectedRecord.price.toFixed(2)}
+                  </p>
+                </div>
+              )}
+              <p className='mt-3 text-red-600 dark:text-red-400 font-medium'>
+                此操作无法撤销！
+              </p>
+            </div>
+          }
+          confirmText='删除'
+          cancelText='取消'
         />
       </div>
     </div>
